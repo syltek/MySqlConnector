@@ -442,6 +442,11 @@ namespace MySqlConnector.Core
 			return pools;
 		}
 
+		public static int GetPooledConnectionCount()
+		{
+			return GetAllPools().Sum(p => p.m_sessions.Count);
+		}
+
 		private ConnectionPool(ConnectionSettings cs)
 		{
 			ConnectionSettings = cs;
