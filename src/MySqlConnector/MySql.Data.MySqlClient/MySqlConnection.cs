@@ -235,11 +235,7 @@ namespace MySql.Data.MySqlClient
 		public static void ClearAllPools() => ConnectionPool.ClearPoolsAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 		public static Task ClearAllPoolsAsync() => ConnectionPool.ClearPoolsAsync(IOBehavior.Asynchronous, CancellationToken.None);
 		public static Task ClearAllPoolsAsync(CancellationToken cancellationToken) => ConnectionPool.ClearPoolsAsync(IOBehavior.Asynchronous, cancellationToken);
-
-		public int GetPooledConnectionCount()
-		{
-			return ConnectionPool.GetPooledConnectionCount();
-		}
+		public static int GetPooledConnectionCount() =>  ConnectionPool.GetPooledConnectionCount();
 
 		private static async Task ClearPoolAsync(MySqlConnection connection, IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
