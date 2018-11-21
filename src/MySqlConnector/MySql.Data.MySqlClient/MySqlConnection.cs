@@ -176,14 +176,13 @@ namespace MySql.Data.MySqlClient
 
 				m_hasBeenOpened = true;
 
-				var settings = GetConnectionSettings();
-				if (settings.Pooling && settings.ServerLevelPooling
-					&& Database != settings.Database)
-				{
-					await ChangeDatabaseAsync(m_connectionSettings.Database);
-				}
-
 				SetState(ConnectionState.Open);
+
+				var settings = GetConnectionSettings();
+				if (settings.Pooling && settings.ServerLevelPooling && !string.IsNullOrEmpty(settings.Database))
+				{
+					await ChangeDatabaseAsync(settings.Database);
+				}
 			}
 			catch (MySqlException)
 			{
@@ -236,6 +235,7 @@ namespace MySql.Data.MySqlClient
 		public static void ClearAllPools() => ConnectionPool.ClearPoolsAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 		public static Task ClearAllPoolsAsync() => ConnectionPool.ClearPoolsAsync(IOBehavior.Asynchronous, CancellationToken.None);
 		public static Task ClearAllPoolsAsync(CancellationToken cancellationToken) => ConnectionPool.ClearPoolsAsync(IOBehavior.Asynchronous, cancellationToken);
+		public static int GetPooledConnectionCount() =>  ConnectionPool.GetPooledConnectionCount();
 
 		private static async Task ClearPoolAsync(MySqlConnection connection, IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
@@ -417,7 +417,16 @@ namespace MySql.Data.MySqlClient
 		private async ValueTask<ServerSession> CreateSessionAsync(IOBehavior? ioBehavior, CancellationToken cancellationToken)
 		{
 			var pool = ConnectionPool.GetPool(m_connectionString);
-			m_connectionSettings = pool?.ConnectionSettings ?? new ConnectionSettings(new MySqlConnectionStringBuilder(m_connectionString));
+			var builder = new MySqlConnectionStringBuilder(m_connectionString);
+			if (builder.ServerLevelPooling)
+			{
+				builder.ConnectionReset = true;
+				m_connectionSettings = new ConnectionSettings(builder);
+			}
+			else
+			{
+				m_connectionSettings = pool?.ConnectionSettings ?? new ConnectionSettings(builder);
+			}
 			var actualIOBehavior = ioBehavior ?? (m_connectionSettings.ForceSynchronous ? IOBehavior.Synchronous : IOBehavior.Asynchronous);
 
 			CancellationTokenSource timeoutSource = null;
@@ -521,7 +530,9 @@ namespace MySql.Data.MySqlClient
 							m_session.ReturnToPool();
 						else
 							m_session.DisposeAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
+
 						m_session = null;
+						m_connectionSettings = null;
 					}
 					SetState(ConnectionState.Closed);
 				}
