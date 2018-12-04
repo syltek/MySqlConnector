@@ -92,12 +92,31 @@ namespace MySql.Data.MySqlClient
 
 			if (transaction != null)
 			{
-				m_xaTransaction = new MySqlXaTransaction(this);
-				m_xaTransaction.Start(transaction);
+				MySqlConnection existingConnection;
+				lock (s_lock)
+					s_transactionConnections.TryGetValue(transaction, out existingConnection);
+
+				if (existingConnection != null && existingConnection.m_shouldCloseWhenUnenlisted && existingConnection.m_connectionString == m_connectionString)
+				{
+					// can reuse the existing connection
+					DoClose(changeState: false);
+					m_session = existingConnection.DetachSession();
+					m_xaTransaction = existingConnection.m_xaTransaction;
+				}
+				else
+				{
+					var xaTransaction = new MySqlXaTransaction(this);
+					xaTransaction.Start(transaction);
+					m_xaTransaction = xaTransaction;
+
+					if (existingConnection == null)
+						lock (s_lock)
+							s_transactionConnections[transaction] = this;
+				}
 			}
 		}
 
-		internal void UnenlistTransaction(MySqlXaTransaction xaTransaction)
+		internal void UnenlistTransaction(MySqlXaTransaction xaTransaction, System.Transactions.Transaction transaction)
 		{
 			if (!object.ReferenceEquals(xaTransaction, m_xaTransaction))
 				throw new InvalidOperationException("Active transaction is not the one being unenlisted from.");
@@ -108,12 +127,37 @@ namespace MySql.Data.MySqlClient
 				m_shouldCloseWhenUnenlisted = false;
 				Close();
 			}
+
+			// NOTE: may try to remove the same Transaction multiple times (if it spans multiple connections), which is a safe no-op
+			lock (s_lock)
+				s_transactionConnections.Remove(transaction);
+		}
+
+		private void AttachSession(ServerSession session)
+		{
+			if (m_session != null)
+				throw new MySqlException("Expected this MySqlConnection to have no ServerSession, but it was already attached.");
+
+			m_session = session;
+		}
+
+		private ServerSession DetachSession()
+		{
+			if (m_session == null)
+				throw new MySqlException("Expected this MySqlConnection to have a ServerSession, but it was already detached.");
+
+			m_activeReader?.Dispose();
+			m_activeReader = null;
+
+			var session = m_session;
+			m_session = null;
+			return session;
 		}
 
 		MySqlXaTransaction m_xaTransaction;
 #endif
 
-		public override void Close() => DoClose();
+		public override void Close() => DoClose(changeState: true);
 
 		public override void ChangeDatabase(string databaseName) => ChangeDatabaseAsync(IOBehavior.Synchronous, databaseName, CancellationToken.None).GetAwaiter().GetResult();
 		public Task ChangeDatabaseAsync(string databaseName) => ChangeDatabaseAsync(IOBehavior.Asynchronous, databaseName, CancellationToken.None);
@@ -273,12 +317,14 @@ namespace MySql.Data.MySqlClient
 
 		public override int ConnectionTimeout => m_connectionSettings.ConnectionTimeout;
 
+		public event MySqlInfoMessageEventHandler InfoMessage;
+
 		protected override void Dispose(bool disposing)
 		{
 			try
 			{
 				if (disposing)
-					DoClose();
+					DoClose(changeState: true);
 			}
 			finally
 			{
@@ -408,10 +454,23 @@ namespace MySql.Data.MySqlClient
 			m_activeReader = dataReader;
 		}
 
-		internal void FinishQuerying()
+		internal void FinishQuerying(bool hasWarnings)
 		{
 			m_session.FinishQuerying();
 			m_activeReader = null;
+
+			if (hasWarnings && InfoMessage != null)
+			{
+				var errors = new List<MySqlError>();
+				using (var command = new MySqlCommand("SHOW WARNINGS;", this))
+				using (var reader = command.ExecuteReader())
+				{
+					while (reader.Read())
+						errors.Add(new MySqlError(reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
+				}
+
+				InfoMessage(this, new MySqlInfoMessageEventArgs(errors.ToArray()));
+			}
 		}
 
 		private async ValueTask<ServerSession> CreateSessionAsync(IOBehavior? ioBehavior, CancellationToken cancellationToken)
@@ -501,15 +560,29 @@ namespace MySql.Data.MySqlClient
 				throw new ObjectDisposedException(GetType().Name);
 		}
 
-		private void DoClose()
+		private void DoClose(bool changeState)
 		{
 #if !NETSTANDARD1_3
 			// If participating in a distributed transaction, keep the connection open so we can commit or rollback.
 			// This handles the common pattern of disposing a connection before disposing a TransactionScope (e.g., nested using blocks)
 			if (m_xaTransaction != null)
 			{
-				m_shouldCloseWhenUnenlisted = true;
-				return;
+				// make sure all DB work is done
+				m_activeReader?.Dispose();
+				m_activeReader = null;
+
+				if (object.ReferenceEquals(m_xaTransaction.Connection, this))
+				{
+					// if this was the original connection in the transaction, simply defer closing
+					m_shouldCloseWhenUnenlisted = true;
+					return;
+				}
+				else
+				{
+					// reattach the session to the transaction's original connection
+					m_xaTransaction.Connection.AttachSession(m_session);
+					m_session = null;
+				}
 			}
 #else
 			// fix "field is never assigned" compiler error
@@ -534,7 +607,9 @@ namespace MySql.Data.MySqlClient
 						m_session = null;
 						m_connectionSettings = null;
 					}
-					SetState(ConnectionState.Closed);
+
+					if (changeState)
+						SetState(ConnectionState.Closed);
 				}
 			}
 		}
@@ -561,6 +636,10 @@ namespace MySql.Data.MySqlClient
 		static readonly StateChangeEventArgs s_stateChangeClosedConnecting = new StateChangeEventArgs(ConnectionState.Closed, ConnectionState.Connecting);
 		static readonly StateChangeEventArgs s_stateChangeConnectingOpen = new StateChangeEventArgs(ConnectionState.Connecting, ConnectionState.Open);
 		static readonly StateChangeEventArgs s_stateChangeOpenClosed = new StateChangeEventArgs(ConnectionState.Open, ConnectionState.Closed);
+#if !NETSTANDARD1_3
+		static readonly object s_lock = new object();
+		static readonly Dictionary<System.Transactions.Transaction, MySqlConnection> s_transactionConnections = new Dictionary<System.Transactions.Transaction, MySqlConnection>();
+#endif
 
 		string m_connectionString;
 		ConnectionSettings m_connectionSettings;
