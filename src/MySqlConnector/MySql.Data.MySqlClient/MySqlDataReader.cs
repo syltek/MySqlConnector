@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -93,6 +94,7 @@ namespace MySql.Data.MySqlClient
 
 			Command.LastInsertedId = resultSet.LastInsertId;
 			m_recordsAffected = m_recordsAffected == null ? resultSet.RecordsAffected : m_recordsAffected.Value + (resultSet.RecordsAffected ?? 0);
+			m_hasWarnings = resultSet.WarningCount != 0;
 		}
 
 		private ValueTask<ResultSet> ScanResultSetAsync(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
@@ -206,6 +208,9 @@ namespace MySql.Data.MySqlClient
 
 		public TimeSpan GetTimeSpan(int ordinal) => (TimeSpan) GetValue(ordinal);
 		public TimeSpan GetTimeSpan(string name) => GetTimeSpan(GetOrdinal(name));
+
+		public override Stream GetStream(int ordinal) => GetResultSet().GetCurrentRow().GetStream(ordinal);
+		public Stream GetStream(string name) => GetStream(GetOrdinal(name));
 
 		public override string GetString(int ordinal) => GetResultSet().GetCurrentRow().GetString(ordinal);
 		public string GetString(string name) => GetString(GetOrdinal(name));
@@ -427,7 +432,7 @@ namespace MySql.Data.MySqlClient
 				m_resultSetBuffered = null;
 
 				var connection = Command.Connection;
-				connection.FinishQuerying();
+				connection.FinishQuerying(m_hasWarnings);
 
 				Command.ReaderClosed();
 				if ((m_behavior & CommandBehavior.CloseConnection) != 0)
@@ -454,6 +459,7 @@ namespace MySql.Data.MySqlClient
 		readonly CommandBehavior m_behavior;
 		bool m_closed;
 		int? m_recordsAffected;
+		bool m_hasWarnings;
 		ResultSet m_resultSet;
 		ResultSet m_resultSetBuffered;
 #if !NETSTANDARD1_3

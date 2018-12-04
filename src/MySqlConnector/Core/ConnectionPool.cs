@@ -29,7 +29,7 @@ namespace MySqlConnector.Core
 			// on the lock in RecoverLeakedSessions in high-concurrency situations
 			if (m_sessionSemaphore.CurrentCount == 0 && unchecked(((uint) Environment.TickCount) - m_lastRecoveryTime) >= 1000u)
 			{
-				Log.Warn("Pool{0} is empty; recovering leaked sessions", m_logArguments);
+				Log.Info("Pool{0} is empty; recovering leaked sessions", m_logArguments);
 				RecoverLeakedSessions();
 			}
 
@@ -142,17 +142,18 @@ namespace MySqlConnector.Core
 			}
 		}
 
-		private bool SessionIsHealthy(ServerSession session)
+		// Returns zero for healthy, non-zero otherwise.
+		private int GetSessionHealth(ServerSession session)
 		{
 			if (!session.IsConnected)
-				return false;
+				return 1;
 			if (session.PoolGeneration != m_generation)
-				return false;
+				return 2;
 			if (ConnectionSettings.ConnectionLifeTime > 0
 				&& unchecked((uint) Environment.TickCount) - session.CreatedTicks >= ConnectionSettings.ConnectionLifeTime)
-				return false;
+				return 3;
 
-			return true;
+			return 0;
 		}
 
 		public void Return(ServerSession session)
@@ -165,14 +166,18 @@ namespace MySqlConnector.Core
 				lock (m_leasedSessions)
 					m_leasedSessions.Remove(session.Id);
 				session.OwningConnection = null;
-				if (SessionIsHealthy(session))
+				var sessionHealth = GetSessionHealth(session);
+				if (sessionHealth == 0)
 				{
 					lock (m_sessions)
 						m_sessions.AddFirst(session);
 				}
 				else
 				{
-					Log.Warn("Pool{0} received invalid Session{1}; destroying it", m_logArguments[0], session.Id);
+					if (sessionHealth == 1)
+						Log.Warn("Pool{0} received invalid Session{1}; destroying it", m_logArguments[0], session.Id);
+					else
+						Log.Info("Pool{0} received expired Session{1}; destroying it", m_logArguments[0], session.Id);
 					AdjustHostConnectionCount(session, -1);
 					session.DisposeAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 				}
