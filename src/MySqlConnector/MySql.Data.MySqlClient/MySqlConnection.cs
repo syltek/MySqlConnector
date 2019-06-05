@@ -283,8 +283,15 @@ namespace MySql.Data.MySqlClient
 			SetState(ConnectionState.Connecting);
 
 			var pool = ConnectionPool.GetPool(m_connectionString);
+			var builder = new MySqlConnectionStringBuilder(m_connectionString);
+			if (builder.ServerLevelPooling)
+			{
+				builder.ConnectionReset = true;
+				m_connectionSettings = new ConnectionSettings(builder);
+			}
+
 			if (m_connectionSettings is null)
-				m_connectionSettings = pool?.ConnectionSettings ?? new ConnectionSettings(new MySqlConnectionStringBuilder(m_connectionString));
+				m_connectionSettings = pool?.ConnectionSettings ?? new ConnectionSettings(builder);
 
 #if !NETSTANDARD1_3
 			// check if there is an open session (in the current transaction) that can be adopted
@@ -312,7 +319,7 @@ namespace MySql.Data.MySqlClient
 				var settings = GetConnectionSettings();
 				if (settings.Pooling && settings.ServerLevelPooling && !string.IsNullOrEmpty(settings.Database))
 				{
-					await ChangeDatabaseAsync(settings.Database);
+					await ChangeDatabaseAsync(settings.Database).ConfigureAwait(false);
 				}
 			}
 			catch (MySqlException)
@@ -572,16 +579,6 @@ namespace MySql.Data.MySqlClient
 
 		private async ValueTask<ServerSession> CreateSessionAsync(ConnectionPool pool, IOBehavior? ioBehavior, CancellationToken cancellationToken)
 		{
-			var builder = new MySqlConnectionStringBuilder(m_connectionString);
-			if (builder.ServerLevelPooling)
-			{
-				builder.ConnectionReset = true;
-				m_connectionSettings = new ConnectionSettings(builder);
-			}
-			else
-			{
-				m_connectionSettings = pool?.ConnectionSettings ?? new ConnectionSettings(builder);
-			}
 			var actualIOBehavior = ioBehavior ?? (m_connectionSettings.ForceSynchronous ? IOBehavior.Synchronous : IOBehavior.Asynchronous);
 
 			CancellationTokenSource timeoutSource = null;

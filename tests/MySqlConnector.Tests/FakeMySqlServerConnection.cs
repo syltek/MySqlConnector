@@ -59,6 +59,8 @@ namespace MySqlConnector.Tests
 
 						case CommandKind.Ping:
 						case CommandKind.ResetConnection:
+						case CommandKind.ChangeUser:
+						case CommandKind.InitDatabase:
 							await SendAsync(stream, 1, WriteOk);
 							break;
 
