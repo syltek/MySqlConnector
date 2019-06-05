@@ -13,7 +13,7 @@ namespace MySqlConnector.Core
 		public void SetData(ArraySegment<byte> data)
 		{
 			m_data = data;
-			if (m_dataOffsets == null)
+			if (m_dataOffsets is null)
 			{
 				m_dataOffsets = new int[ResultSet.ColumnDefinitions.Length];
 				m_dataLengths = new int[ResultSet.ColumnDefinitions.Length];
@@ -76,7 +76,7 @@ namespace MySqlConnector.Core
 		{
 			CheckBinaryColumn(ordinal);
 
-			if (buffer == null)
+			if (buffer is null)
 			{
 				// this isn't required by the DbDataReader.GetBytes API documentation, but is what mysql-connector-net does
 				// (as does SqlDataReader: http://msdn.microsoft.com/en-us/library/system.data.sqlclient.sqldatareader.getbytes.aspx)
@@ -100,7 +100,7 @@ namespace MySqlConnector.Core
 		public long GetChars(int ordinal, long dataOffset, char[] buffer, int bufferOffset, int length)
 		{
 			var value = GetString(ordinal);
-			if (buffer == null)
+			if (buffer is null)
 				return value.Length;
 
 			CheckBufferArguments(dataOffset, buffer, bufferOffset, length);
@@ -277,7 +277,13 @@ namespace MySqlConnector.Core
 			return (ulong) value;
 		}
 
-		public DateTime GetDateTime(int ordinal) => (DateTime) GetValue(ordinal);
+		public DateTime GetDateTime(int ordinal)
+		{
+			var value = GetValue(ordinal);
+			if (value is MySqlDateTime mySqlDateTime)
+				return mySqlDateTime.GetDateTime();
+			return (DateTime) value;
+		}
 
 		public DateTimeOffset GetDateTimeOffset(int ordinal) => new DateTimeOffset(DateTime.SpecifyKind(GetDateTime(ordinal), DateTimeKind.Utc));
 
@@ -334,7 +340,7 @@ namespace MySqlConnector.Core
 
 		protected static Guid CreateGuidFromBytes(MySqlGuidFormat guidFormat, ReadOnlySpan<byte> bytes)
 		{
-#if NET45 || NET461 || NETSTANDARD1_3 || NETSTANDARD2_0
+#if NET45 || NET461 || NET471 || NETSTANDARD1_3 || NETSTANDARD2_0
 			if (guidFormat == MySqlGuidFormat.Binary16)
 				return new Guid(new[] { bytes[3], bytes[2], bytes[1], bytes[0], bytes[5], bytes[4], bytes[7], bytes[6], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15] });
 			if (guidFormat == MySqlGuidFormat.TimeSwapBinary16)

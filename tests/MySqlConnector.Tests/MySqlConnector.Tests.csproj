@@ -31,8 +31,8 @@
   </ItemGroup>
 
   <ItemGroup Condition=" '$(Configuration)' == 'Baseline' ">
-    <PackageReference Include="MySql.Data" Version="8.0.13" />
-    <Compile Remove="ByteBufferWriterTests.cs;CachedProcedureTests.cs;ConnectionTests.cs;FakeMySqlServer.cs;FakeMySqlServerConnection.cs;LoadBalancerTests.cs;NormalizeTests.cs;StatementPreparerTests.cs;TypeMapperTests.cs;UtilityTests.cs" />
+    <PackageReference Include="MySql.Data" Version="8.0.16" />
+    <Compile Remove="ByteBufferWriterTests.cs;CachedProcedureTests.cs;ConnectionTests.cs;FakeMySqlServer.cs;FakeMySqlServerConnection.cs;LoadBalancerTests.cs;MySqlExceptionTests.cs;NormalizeTests.cs;ServerVersionTests.cs;StatementPreparerTests.cs;TypeMapperTests.cs;UtilityTests.cs" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">

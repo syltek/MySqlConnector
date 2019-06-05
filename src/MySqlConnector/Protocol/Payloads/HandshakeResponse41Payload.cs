@@ -1,3 +1,4 @@
+using System;
 using MySqlConnector.Core;
 using MySqlConnector.Protocol.Serialization;
 
@@ -19,7 +20,7 @@ namespace MySqlConnector.Protocol.Payloads
 				(serverCapabilities & ProtocolCapabilities.PluginAuthLengthEncodedClientData) |
 				ProtocolCapabilities.MultiStatements |
 				ProtocolCapabilities.MultiResults |
-				ProtocolCapabilities.LocalFiles |
+				(cs.AllowLoadLocalInfile ? (serverCapabilities & ProtocolCapabilities.LocalFiles) : 0) |
 				(string.IsNullOrWhiteSpace(cs.Database) ? 0 : ProtocolCapabilities.ConnectWithDatabase) |
 				(cs.UseAffectedRows ? 0 : ProtocolCapabilities.FoundRows) |
 				(useCompression ? ProtocolCapabilities.Compress : ProtocolCapabilities.None) |
@@ -29,7 +30,7 @@ namespace MySqlConnector.Protocol.Payloads
 				additionalCapabilities));
 			writer.Write(0x4000_0000);
 			writer.Write((byte) characterSet);
-			writer.Write(s_padding);
+			writer.Write(Padding);
 
 			return writer;
 		}
@@ -58,6 +59,7 @@ namespace MySqlConnector.Protocol.Payloads
 			return writer.ToPayloadData();
 		}
 
-		static readonly byte[] s_padding = new byte[23];
+		// NOTE: not new byte[23]; see https://github.com/dotnet/roslyn/issues/33088
+		static ReadOnlySpan<byte> Padding => new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	}
 }

@@ -64,7 +64,7 @@ namespace MySql.Data.MySqlClient
 			get
 			{
 				VerifyNotDisposed();
-				if (m_parameterCollection == null)
+				if (m_parameterCollection is null)
 					m_parameterCollection = new MySqlParameterCollection();
 				return m_parameterCollection;
 			}
@@ -72,7 +72,7 @@ namespace MySql.Data.MySqlClient
 
 		public new MySqlParameter CreateParameter() => (MySqlParameter) base.CreateParameter();
 
-		public override void Cancel() => Connection.Cancel(this);
+		public override void Cancel() => Connection?.Cancel(this);
 
 		public override int ExecuteNonQuery() => ExecuteNonQueryAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 
@@ -100,7 +100,7 @@ namespace MySql.Data.MySqlClient
 		private Task PrepareAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
 			if (!NeedsPrepare(out var exception))
-				return exception != null ? Utility.TaskFromException(exception) : Utility.CompletedTask;
+				return exception is null ? Utility.CompletedTask : Utility.TaskFromException(exception);
 
 			return DoPrepareAsync(ioBehavior, cancellationToken);
 		}
@@ -108,7 +108,7 @@ namespace MySql.Data.MySqlClient
 		private bool NeedsPrepare(out Exception exception)
 		{
 			exception = null;
-			if (Connection == null)
+			if (Connection is null)
 				exception = new InvalidOperationException("Connection property must be non-null.");
 			else if (Connection.State != ConnectionState.Open)
 				exception = new InvalidOperationException("Connection must be Open; current state is {0}".FormatInvariant(Connection.State));
@@ -127,7 +127,7 @@ namespace MySql.Data.MySqlClient
 			}
 
 			// don't prepare the same SQL twice
-			return Connection.Session.TryGetPreparedStatement(CommandText) == null;
+			return Connection.Session.TryGetPreparedStatement(CommandText) is null;
 		}
 
 		private async Task DoPrepareAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
@@ -363,7 +363,7 @@ namespace MySql.Data.MySqlClient
 			if (!token.CanBeCanceled)
 				return null;
 
-			if (m_cancelAction == null)
+			if (m_cancelAction is null)
 				m_cancelAction = Cancel;
 			return token.Register(m_cancelAction);
 		}
@@ -435,7 +435,7 @@ namespace MySql.Data.MySqlClient
 			exception = null;
 			if (m_isDisposed)
 				exception = new ObjectDisposedException(GetType().Name);
-			else if (Connection == null)
+			else if (Connection is null)
 				exception = new InvalidOperationException("Connection property must be non-null.");
 			else if (Connection.State != ConnectionState.Open && Connection.State != ConnectionState.Connecting)
 				exception = new InvalidOperationException("Connection must be Open; current state is {0}".FormatInvariant(Connection.State));
@@ -443,10 +443,11 @@ namespace MySql.Data.MySqlClient
 				exception = new InvalidOperationException("The transaction associated with this command is not the connection's active transaction; see https://fl.vu/mysql-trans");
 			else if (string.IsNullOrWhiteSpace(CommandText))
 				exception = new InvalidOperationException("CommandText must be specified");
-			return exception == null;
+			return exception is null;
 		}
 
-		private PreparedStatements TryGetPreparedStatement() => CommandType == CommandType.Text && !string.IsNullOrWhiteSpace(CommandText) ? m_connection.Session.TryGetPreparedStatement(CommandText) : null;
+		private PreparedStatements TryGetPreparedStatement() => CommandType == CommandType.Text && !string.IsNullOrWhiteSpace(CommandText) && m_connection != null &&
+			m_connection.State == ConnectionState.Open ? m_connection.Session.TryGetPreparedStatement(CommandText) : null;
 
 		internal void ReaderClosed() => (m_commandExecutor as StoredProcedureCommandExecutor)?.SetParams();
 

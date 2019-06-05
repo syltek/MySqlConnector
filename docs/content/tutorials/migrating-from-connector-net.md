@@ -30,6 +30,12 @@ MySqlConnector has some different default connection string options:
     (when not using a secure connection). It’s <code>false</code> by default to avoid disclosing the password to a malicious proxy.</td>
   </tr>
   <tr>
+    <td><code>CharacterSet</code>, <code>CharSet</code></td>
+    <td>Ignored; <code>utf8mb4</code> is always used</td>
+    <td>(server-defined)</td>
+    <td>MySqlConnector always uses <code>utf8mb4</code> to send and receive strings from MySQL Server. This option may be specified (for backwards compatibility) but it will be ignored.</td>
+  </tr>
+  <tr>
     <td><code>ConnectionReset</code></td>
     <td>Default is <code>true</code></td>
     <td>Default is <code>false</code></td>
@@ -53,23 +59,32 @@ MySqlConnector has some different default connection string options:
     <td>(not configurable)</td>
     <td>Specify a file containing the server’s RSA public key to allow <code>sha256_password</code> authentication over an insecure connection.</td>
   </tr>
-  <tr>
-    <td><code>UseAffectedRows</code></td>
-    <td>Default is <code>true</code></td>
-    <td>Default is <code>false</code></td>
-    <td>This also affects the behavior of the <code>ROW_COUNT</code> function. <code>UseAffectedRows=true</code> is the default in most other languages (C++, PHP, others)</td>
-  </tr>
 </table>
+
+Connector/NET uses `CertificateFile` to specify the client’s private key, unless `SslCert` and `SslKey` are specified, in which case
+it is used to specify the server’s CA certificate file; `SslCa` is just an alias for this option. MySqlConnector always uses `CertificateFile`
+for the client’s private key (in PFX format); `SslCa` (aka `CACertificateFile`) is a separate option to specify the server’s CA certificate.
 
 Some connection string options that are supported in Connector/NET are not supported in MySqlConnector. For a full list of options that are
 supported in MySqlConnector, see the [Connection Options](connection-options).
 
+### Implicit Conversions
+
+Connector/NET allows `MySqlDataReader.GetString()` to be called on many non-textual columns, and will implicitly
+convert the value to a `string` (using the current locale). This is a frequent source of locale-dependent bugs, so
+MySqlConnector follows typical ADO.NET practice (e.g., SqlClient, npgsql) and disallows this (by throwing an `InvalidCastException`).
+
+To fix this, use the accessor method (e.g., `GetInt32`, `GetDouble`) that matches the column type, or perform an
+explicit conversion to `string` by calling `GetValue(x).ToString()` (optionally supplying the right `CultureInfo` to use
+for formatting).
+
 ### TransactionScope
 
-MySqlConnector adds full distributed transaction support (for client code using [`TransactionScope`](https://msdn.microsoft.com/en-us/library/system.transactions.transactionscope.aspx)),
-while Connector/NET uses regular database transactions. As a result, code that uses `TransactionScope`
-may execute differently with MySqlConnector. To get Connector/NET-compatible behavior, remove
-`TransactionScope` and use `BeginTransaction`/`Commit` directly.
+MySqlConnector adds full distributed transaction support (for client code using [`System.Transactions.Transaction`](https://docs.microsoft.com/en-us/dotnet/api/system.transactions.transaction
+)),
+while Connector/NET uses regular database transactions. As a result, code that uses `TransactionScope` or `MySqlConnection.EnlistTransaction`
+may execute differently with MySqlConnector. To get Connector/NET-compatible behavior, set
+`UseXaTransactions=false` in your connection string.
 
 ### MySqlConnection
 
@@ -82,7 +97,7 @@ Connector/NET allows a command to be executed even when `MySqlCommand.Transactio
 disposed `MySqlTransaction`. MySqlConnector will throw an `InvalidOperationException` if the `MySqlCommand.Transaction`
 property doesn’t reference the active transaction. This fixes <a href="https://bugs.mysql.com/bug.php?id=88611">MySQL Bug 88611</a>.
 To disable this strict validation, set <code>IgnoreCommandTransaction=true</code>
-in the connection string. See [Issue 474](https://github.com/mysql-net/MySqlConnector/issues/474) for more details.
+in the connection string. See [Transaction Usage](troubleshooting/transaction-usage/) for more details.
 
 ### Exceptions
 
@@ -123,7 +138,7 @@ The following bugs in Connector/NET are fixed by switching to MySqlConnector. (~
 * [#88124](https://bugs.mysql.com/bug.php?id=88124): CommandTimeout isn’t reset when calling Read/NextResult
 * ~~[#88472](https://bugs.mysql.com/bug.php?id=88472): `TINYINT(1)` is not returned as `bool` if `MySqlCommand.Prepare` is called~~
 * [#88611](https://bugs.mysql.com/bug.php?id=88611): `MySqlCommand` can be executed even if it has "wrong" transaction
-* [#88660](https://bugs.mysql.com/bug.php?id=88660): `MySqlClientFactory.Instance.CreateDataAdapter()` and `CreateCommandBuilder` return `null`
+* ~~[#88660](https://bugs.mysql.com/bug.php?id=88660): `MySqlClientFactory.Instance.CreateDataAdapter()` and `CreateCommandBuilder` return `null`~~
 * [#89085](https://bugs.mysql.com/bug.php?id=89085): `MySqlConnection.Database` not updated after `USE database;`
 * [#89159](https://bugs.mysql.com/bug.php?id=89159): `MySqlDataReader` cannot outlive `MySqlCommand`
 * [#89335](https://bugs.mysql.com/bug.php?id=89335): `MySqlCommandBuilder.DeriveParameters` fails for `JSON` type
@@ -131,13 +146,23 @@ The following bugs in Connector/NET are fixed by switching to MySqlConnector. (~
 * [#91123](https://bugs.mysql.com/bug.php?id=91123): Database names are case-sensitive when calling a stored procedure
 * [#91199](https://bugs.mysql.com/bug.php?id=91199): Can't insert `MySqlDateTime` values
 * [#91751](https://bugs.mysql.com/bug.php?id=91751): `YEAR` column retrieved incorrectly with prepared command
-* [#91752](https://bugs.mysql.com/bug.php?id=91752): `00:00:00` is converted to `NULL` with prepared command
+* ~~[#91752](https://bugs.mysql.com/bug.php?id=91752): `00:00:00` is converted to `NULL` with prepared command~~
 * [#91753](https://bugs.mysql.com/bug.php?id=91753): Unnamed parameter not supported by `MySqlCommand.Prepare`
 * [#91754](https://bugs.mysql.com/bug.php?id=91754): Inserting 16MiB `BLOB` shifts it by four bytes when prepared
 * [#91770](https://bugs.mysql.com/bug.php?id=91770): `TIME(n)` column loses microseconds with prepared command
 * [#92367](https://bugs.mysql.com/bug.php?id=92367): `MySqlDataReader.GetDateTime` and `GetValue` return inconsistent values
+* [#92465](https://bugs.mysql.com/bug.php?id=92465): "There is already an open DataReader" `MySqlException` thrown from `TransactionScope.Dispose`
 * [#92734](https://bugs.mysql.com/bug.php?id=92734): `MySqlParameter.Clone` doesn't copy all property values
 * [#92789](https://bugs.mysql.com/bug.php?id=92789): Illegal connection attributes written for non-ASCII values
-* [#92912](https://bugs.mysql.com/bug.php?id=92912): `MySqlDbType.LongText` values encoded incorrectly with prepared statements
+* ~~[#92912](https://bugs.mysql.com/bug.php?id=92912): `MySqlDbType.LongText` values encoded incorrectly with prepared statements~~
 * [#92982](https://bugs.mysql.com/bug.php?id=92982): `FormatException` thrown when connecting to MySQL Server 8.0.13
 * [#93047](https://bugs.mysql.com/bug.php?id=93047): `MySqlDataAdapter` throws timeout exception when an error occurs
+* [#93202](https://bugs.mysql.com/bug.php?id=93202): Connector runs `SHOW VARIABLES` when connection is made
+* [#93220](https://bugs.mysql.com/bug.php?id=93220): Can’t call FUNCTION when parameter name contains parentheses
+* [#93370](https://bugs.mysql.com/bug.php?id=93370): `MySqlParameterCollection.Add` precondition check isn't consistent
+* [#93374](https://bugs.mysql.com/bug.php?id=93374): `MySqlDataReader.GetStream` throws `IndexOutOfRangeException`
+* [#93825](https://bugs.mysql.com/bug.php?id=93825): `MySqlException` loses data when serialized
+* [#94075](https://bugs.mysql.com/bug.php?id=94075): `MySqlCommand.Cancel` throws exception
+* [#94760](https://bugs.mysql.com/bug.php?id=94760): `MySqlConnection.OpenAsync(CancellationToken)` doesn’t respect cancellation token
+* [#95348](https://bugs.mysql.com/bug.php?id=95348): Inefficient query when executing stored procedures
+* [#95436](https://bugs.mysql.com/bug.php?id=95436): Client doesn't authenticate with PEM certificate

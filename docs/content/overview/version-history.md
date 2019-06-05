@@ -1,5 +1,5 @@
 ---
-lastmod: 2018-10-12
+lastmod: 2019-05-11
 date: 2017-03-27
 menu:
   main:
@@ -11,32 +11,103 @@ weight: 30
 Version History
 ===============
 
-### 0.48.0 RC 1
+### 0.56.0
 
+* Support `client_ed25519` authentication plugin for MariaDB: [#639](https://github.com/mysql-net/MySqlConnector/issues/639).
+  * This is implemented in a new NuGet package, MySqlConnector.Authentication.Ed25519, and must be activated by calling `Ed25519AuthenticationPlugin.Install`.
+
+### 0.55.0
+
+* **Breaking** `MySqlBulkLoader` (for local files) and `LOAD DATA LOCAL INFILE` are disabled by default.
+  * Set `AllowLoadLocalInfile=true` in the connection string to enable loading local data.
+  * This is a security measure; see https://fl.vu/mysql-load-data for details.
+* Add `AllowLoadLocalInfile` connection string option: [#643](https://github.com/mysql-net/MySqlConnector/issues/643).
+* Add `SslCert` and `SslKey` connection string options to specify a client certificate using PEM files: [#641](https://github.com/mysql-net/MySqlConnector/issues/641).
+* Add `SslCa` alias for the `CACertificateFile` connection string option: [#640](https://github.com/mysql-net/MySqlConnector/issues/640).
+
+### 0.54.0
+
+* Implement batch updates in `MySqlDataAdapter`: [#635](https://github.com/mysql-net/MySqlConnector/issues/635).
+  * See [Performing Batch Operations Using DataAdapters](https://docs.microsoft.com/en-us/dotnet/framework/data/adonet/performing-batch-operations-using-dataadapters) for information about the API.
+* Improve compatibility with latest Azure Database for MySQL changes.
+
+### 0.53.0
+
+* **Breaking** `MySqlDataReader.GetTextReader()` will throw an `InvalidCastException` if the field value is NULL. Previously, it would return a `StringReader` wrapping an empty string.
+* Add `MySqlDataReader.GetTextReader(string name)`.
+* Implement `MySqlDataReader.GetFieldValue<T>` for `TextReader` and `Stream`.
+
+### 0.52.0
+
+* **Potentially breaking** Change default connection collation from `utf8mb4_general_ci` to the server's default for `utf8mb4`: [#626](https://github.com/mysql-net/MySqlConnector/issues/626).
+  * This updates a change made in 0.48.0.
+* Fix "Command timeout" exception being thrown when there wasn't a command timeout: [#628](https://github.com/mysql-net/MySqlConnector/issues/628).
+
+### 0.51.1
+
+* Add support for `Memory<byte>` and `ArraySegment<byte>` as `MySqlParameter.Value` values.
+* Fix exception when setting `MySqlParameter.Value` to `ReadOnlyMemory<byte>` when using prepared commands.
+
+### 0.51.0
+
+* Set `MySqlException.Number` to `MySqlErrorCode.UnableToConnectToHost` in more situations when connecting times out: [#622](https://github.com/mysql-net/MySqlConnector/pull/622).
+* Improve handling of `MySqlConnection.Close()` within `TransactionScope`: [#620](https://github.com/mysql-net/MySqlConnector/issues/620).
+* Allow `MySqlParameter.Value` to be a `ReadOnlyMemory<byte>`: [#624](https://github.com/mysql-net/MySqlConnector/issues/624).
+* Thanks to <a href="https://github.com/mguinness">mguinness</a> for contributions to this release.
+
+### 0.50.0
+
+* Add `MySqlClientFactory.Register()` for integration with `DbProviderFactories` in `netcoreapp2.1`: [#526](https://github.com/mysql-net/MySqlConnector/issues/526).
+* Use more efficient "Reset Connection" for MariaDB 10.2.4 and later: [#613](https://github.com/mysql-net/MySqlConnector/issues/613).
+* Ignore `MySqlConnection.EnlistTransaction` called more than once for the same transaction: [#619](https://github.com/mysql-net/MySqlConnector/issues/619).
+* `MySqlConnection.ConnectionString` will always be coerced from `null` to the empty string.
+* Use `ReadOnlySpan<byte>` in more places when parsing server responses.
+* Fix multiple `NullReferenceException` errors that could occur in edge cases.
+
+### 0.49.3
+
+* Use correct isolation level when starting a transaction for `System.Transactions.TransactionScope`: [#605](https://github.com/mysql-net/MySqlConnector/issues/605).
+
+### 0.49.2
+
+* Fix bug in parsing OK packet when `CLIENT_SESSION_TRACK` isn't supported: [#603](https://github.com/mysql-net/MySqlConnector/pull/603).
+
+### 0.49.0
+
+* **Breaking** The default value for the `UseAffectedRows` connection string option has changed from `true` to `false`. This provides better compatibility with Connector/NET's defaults and also with other ADO.NET libraries: [#600](https://github.com/mysql-net/MySqlConnector/issues/600).
+  * If you are upgrading from an earlier version of MySqlConnector, either audit your uses of the return value of `ExecuteNonQuery` (it will now return the number of rows matched by the `WHERE` clause for `UPDATE` statements, instead of the number of rows whose values are actually changed), or add `UseAffectedRows=true` to your connection string.
+  * If you are migrating (or have recently migrated) from Connector/NET to MySqlConnector, then no changes need to be made: MySqlConnector now exhibits the same default behaviour as Connector/NET.
+* Make `MySqlException` serializable: [#601](https://github.com/mysql-net/MySqlConnector/issues/601).
+* Set `MySqlException.Number` to `MySqlErrorCode.UnableToConnectToHost` when connecting fails: [#599](https://github.com/mysql-net/MySqlConnector/issues/599).
+* Populate `MySqlException.Data` dictionary: [#602](https://github.com/mysql-net/MySqlConnector/issues/602).
+
+### 0.48.2
+
+* Fix `InvalidCastException` in `MySqlDataReader.GetDateTime` when `AllowZeroDateTime=True`: [#597](https://github.com/mysql-net/MySqlConnector/issues/597).
+
+### 0.48.1
+
+* Add `net471` as target platform: [#595](https://github.com/mysql-net/MySqlConnector/issues/595).
+* Support `IDbColumnSchemaGenerator` interface in `netcoreapp2.1` package.
+* Fix error in binding parameter values for prepared statements.
+* Fix exception when using more than 32,767 parameters in a prepared statement.
+
+### 0.48.0
+
+* **Breaking** Disallow duplicate parameter names after normalization: [#591](https://github.com/mysql-net/MySqlConnector/issues/591).
+* **Potentially breaking** Change default connection collation from `utf8mb4_bin` to `utf8mb4_general_ci`: [#585](https://github.com/mysql-net/MySqlConnector/issues/585).
+* **Potentially breaking** Update stored procedure metadata cache to use `mysql.proc` when available: [#569](https://github.com/mysql-net/MySqlConnector/issues/569).
+  * This provides higher performance, but is a potentially-breaking change for any client using stored procedures.
+* Change `System.Transactions` support:
+  * Add `UseXaTransactions` connection string option to opt out of XA transactions (equivalent to Connector/NET behaviour): [#254](https://github.com/mysql-net/MySqlConnector/issues/254).
+  * **Potentially breaking** Opening multiple (distinct) `MySqlConnection` objects within the same transaction will reuse the same server session: [#546](https://github.com/mysql-net/MySqlConnector/issues/546).
 * Add `MySqlConnection.InfoMessage` event: [#594](https://github.com/mysql-net/MySqlConnector/issues/594).
+* Implement `ICloneable` on `MySqlCommand`: [#583](https://github.com/mysql-net/MySqlConnector/issues/583).
+* Fix logic for detecting variable names in SQL: [#195](https://github.com/mysql-net/MySqlConnector/issues/195), [#589](https://github.com/mysql-net/MySqlConnector/issues/589).
+* Fix `NullReferenceException` when attempting to invoke a non-existent stored procedure.
+* Support MySQL Server 5.1 (and earlier) by using `utf8` if `utf8mb4` isn't available.
 * Reduce log message severity for session discarded due to `ConnectionLifeTime`: [#586](https://github.com/mysql-net/MySqlConnector/issues/586).
 * Optimise `MySqlDataReader.GetStream`: [#592](https://github.com/mysql-net/MySqlConnector/issues/592).
-
-### 0.48.0 Beta 3
-
-* **Potentially breaking** Disallow duplicate parameter names after normalization: [#591](https://github.com/mysql-net/MySqlConnector/issues/591).
-* Fix logic for detecting variable names in SQL: [#195](https://github.com/mysql-net/MySqlConnector/issues/195), [#589](https://github.com/mysql-net/MySqlConnector/issues/589).
-* Implement more efficient version of `MySqlDataReader.GetStream`.
-* Support MySQL Server 5.1 (and earlier) by using `utf8` if `utf8mb4` isn't available.
-* Fix `NullReferenceException` when attempting to invoke a non-existent stored procedure.
-
-### 0.48.0 Beta 2
-
-* **Potentially breaking** Reuse a single connection used sequentially within a transaction: [#546](https://github.com/mysql-net/MySqlConnector/issues/546).
-  * Could change the behavior of `TransactionScope` in existing code, but will be more similar to Connector/NET.
-* **Potentially breaking** Set default connection collation to `utf8mb4_general_ci`: [#585](https://github.com/mysql-net/MySqlConnector/issues/585).
-* Implement `ICloneable` on `MySqlCommand`: [#583](https://github.com/mysql-net/MySqlConnector/issues/583).
-* Switch back to embedded PDBs.
-
-### 0.48.0 Beta 1
-
-* **Potentially breaking** Update stored procedure metadata cache to use `mysql.proc` when available: [#569](https://github.com/mysql-net/MySqlConnector/issues/569).
-  * This should provide higher performance, but is a potentially-breaking change for any client using stored procedures.
 * Use latest dotnet SourceLink package.
 
 ### 0.47.1

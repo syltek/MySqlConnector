@@ -76,6 +76,34 @@ namespace SideBySide
 		}
 
 		[Fact]
+		public void NewCommandIsNotPrepared()
+		{
+			using (var command = new MySqlCommand())
+				Assert.False(command.IsPrepared);
+		}
+
+		[Fact]
+		public void CommandWithoutConnectionIsNotPrepared()
+		{
+			using (var command = new MySqlCommand())
+			{
+				command.CommandText = "SELECT 1";
+				Assert.False(command.IsPrepared);
+			}
+		}
+
+		[Fact]
+		public void CommandWithClosedConnectionIsNotPrepared()
+		{
+			using (var connection = new MySqlConnection())
+			using (var command = connection.CreateCommand())
+			{
+				command.CommandText = "SELECT 1";
+				Assert.False(command.IsPrepared);
+			}
+		}
+
+		[Fact]
 		public void ExecuteNonQueryForSelectReturnsNegativeOne()
 		{
 			using (var connection = new MySqlConnection(m_database.Connection.ConnectionString))
@@ -272,6 +300,13 @@ create table execute_non_query(id integer not null primary key auto_increment, v
 					}
 				}
 			}
+		}
+
+		[SkippableFact(Baseline = "https://bugs.mysql.com/bug.php?id=94075")]
+		public void CancelEmptyCommandIsNoop()
+		{
+			using (var cmd = new MySqlCommand())
+				cmd.Cancel();
 		}
 
 		private static string GetIgnoreCommandTransactionConnectionString()

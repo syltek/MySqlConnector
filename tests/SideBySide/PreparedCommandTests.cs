@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Dapper;
 using MySql.Data.MySqlClient;
 using Xunit;
@@ -218,6 +219,89 @@ CREATE TABLE prepared_command_test(rowid INTEGER NOT NULL PRIMARY KEY AUTO_INCRE
 				cmd.Prepare();
 				Assert.Throws<MySqlException>(() => cmd.ExecuteScalar());
 			}
+		}
+
+		[Theory]
+		[InlineData(1)]
+		[InlineData(2)]
+		[InlineData(3)]
+		[InlineData(4)]
+		[InlineData(5)]
+		[InlineData(6)]
+		[InlineData(7)]
+		[InlineData(8)]
+		[InlineData(9)]
+		[InlineData(10)]
+		[InlineData(11)]
+		[InlineData(16)]
+		[InlineData(17)]
+		[InlineData(100)]
+		[InlineData(1000)]
+		[InlineData(10000)]
+		[InlineData(32767)]
+		[InlineData(32768)]
+		[InlineData(65535)]
+		public void ParametersAreBound(int parameterCount)
+		{
+			using (var connection = CreateConnectionWithTableOfIntegers())
+			using (var cmd = CreateCommandWithParameters(connection, parameterCount))
+			{
+				cmd.Prepare();
+
+				using (var reader = cmd.ExecuteReader())
+				{
+					for (var i = 1; i <= Math.Min(parameterCount, 10); i++)
+					{
+						Assert.True(reader.Read());
+						Assert.Equal(i, reader.GetInt32(0));
+					}
+					Assert.False(reader.Read());
+				}
+			}
+		}
+
+		[Fact]
+		public void CannotUse64KParameters()
+		{
+			using (var connection = CreateConnectionWithTableOfIntegers())
+			using (var cmd = CreateCommandWithParameters(connection, 65536))
+			{
+				try
+				{
+					cmd.Prepare();
+					Assert.False(true, "Exception wasn't thrown");
+				}
+				catch (MySqlException ex)
+				{
+					Assert.Equal(MySqlErrorCode.PreparedStatementManyParameters, (MySqlErrorCode) ex.Number);
+				}
+			}
+		}
+
+		private static MySqlConnection CreateConnectionWithTableOfIntegers()
+		{
+			var connection = CreatePrepareConnection();
+			connection.Execute(@"drop table if exists prepared_command_test; create table prepared_command_test(value int not null); insert into prepared_command_test(value) values (1),(2),(3),(4),(5),(6),(7),(8),(9),(10);");
+			return connection;
+		}
+
+		private static MySqlCommand CreateCommandWithParameters(MySqlConnection connection, int parameterCount)
+		{
+			var cmd = connection.CreateCommand();
+			var sql = new StringBuilder("select value from prepared_command_test where value in (");
+			for (int parameterIndex = 1; parameterIndex <= parameterCount; parameterIndex++)
+			{
+				var parameterName = "p" + parameterIndex;
+				cmd.Parameters.AddWithValue(parameterName, parameterIndex);
+				if (parameterIndex > 1)
+					sql.Append(",");
+				sql.Append("@");
+				sql.Append(parameterName);
+			}
+			sql.Append(") order by value;");
+
+			cmd.CommandText = sql.ToString();
+			return cmd;
 		}
 
 		public static IEnumerable<object[]> GetInsertAndQueryData()

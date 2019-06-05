@@ -46,7 +46,9 @@ namespace MySqlConnector.Core
 			SslMode = csb.SslMode;
 			CertificateFile = csb.CertificateFile;
 			CertificatePassword = csb.CertificatePassword;
-			CACertificateFile = csb.CACertificateFile;
+			SslCertificateFile = csb.SslCert;
+			SslKeyFile = csb.SslKey;
+			CACertificateFile = csb.SslCa;
 			CertificateStoreLocation = csb.CertificateStoreLocation;
 			CertificateThumbprint = csb.CertificateThumbprint;
 
@@ -63,6 +65,7 @@ namespace MySqlConnector.Core
 			ServerLevelPooling = csb.ServerLevelPooling;
 
 			// Other Options
+			AllowLoadLocalInfile = csb.AllowLoadLocalInfile;
 			AllowPublicKeyRetrieval = csb.AllowPublicKeyRetrieval;
 			AllowUserVariables = csb.AllowUserVariables;
 			AllowZeroDateTime = csb.AllowZeroDateTime;
@@ -84,6 +87,7 @@ namespace MySqlConnector.Core
 			TreatTinyAsBoolean = csb.TreatTinyAsBoolean;
 			UseAffectedRows = csb.UseAffectedRows;
 			UseCompression = csb.UseCompression;
+			UseXaTransactions = csb.UseXaTransactions;
 		}
 
 		private static MySqlGuidFormat GetEffectiveGuidFormat(MySqlGuidFormat guidFormat, bool oldGuids)
@@ -129,6 +133,8 @@ namespace MySqlConnector.Core
 		public string CertificateFile { get; }
 		public string CertificatePassword { get; }
 		public string CACertificateFile { get; }
+		public string SslCertificateFile { get; }
+		public string SslKeyFile { get; }
 		public MySqlCertificateStoreLocation CertificateStoreLocation { get; }
 		public string CertificateThumbprint { get; }
 
@@ -143,6 +149,7 @@ namespace MySqlConnector.Core
 		public bool ServerLevelPooling { get; }
 
 		// Other Options
+		public bool AllowLoadLocalInfile { get; }
 		public bool AllowPublicKeyRetrieval { get; }
 		public bool AllowUserVariables { get; }
 		public bool AllowZeroDateTime { get; }
@@ -164,6 +171,7 @@ namespace MySqlConnector.Core
 		public bool TreatTinyAsBoolean { get; }
 		public bool UseAffectedRows { get; }
 		public bool UseCompression { get; }
+		public bool UseXaTransactions { get; }
 
 		public byte[] ConnectionAttributes { get; set; }
 
