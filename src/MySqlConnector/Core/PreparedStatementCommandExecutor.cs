@@ -80,18 +80,17 @@ namespace MySqlConnector.Core
 				for (var i = 0; i < parameters.Length; i++)
 				{
 					var parameter = parameters[i];
-					if (parameter.Value == null || parameter.Value == DBNull.Value)
-					{
-						if (i > 0 && i % 8 == 0)
-						{
-							writer.Write(nullBitmap);
-							nullBitmap = 0;
-						}
-
+					if (parameter.Value is null || parameter.Value == DBNull.Value)
 						nullBitmap |= (byte) (1 << (i % 8));
+
+					if (i % 8 == 7)
+					{
+						writer.Write(nullBitmap);
+						nullBitmap = 0;
 					}
 				}
-				writer.Write(nullBitmap);
+				if (parameters.Length % 8 != 0)
+					writer.Write(nullBitmap);
 
 				// write "new parameters bound" flag
 				writer.Write((byte) 1);

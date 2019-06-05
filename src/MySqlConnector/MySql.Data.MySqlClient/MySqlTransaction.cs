@@ -16,7 +16,7 @@ namespace MySql.Data.MySqlClient
 		private async Task CommitAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
 			VerifyNotDisposed();
-			if (Connection == null)
+			if (Connection is null)
 				throw new InvalidOperationException("Already committed or rolled back.");
 
 			if (Connection.CurrentTransaction == this)
@@ -30,7 +30,7 @@ namespace MySql.Data.MySqlClient
 			{
 				throw new InvalidOperationException("This is not the active transaction.");
 			}
-			else if (Connection.CurrentTransaction == null)
+			else if (Connection.CurrentTransaction is null)
 			{
 				throw new InvalidOperationException("There is no active transaction.");
 			}
@@ -43,7 +43,7 @@ namespace MySql.Data.MySqlClient
 		private async Task RollbackAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
 			VerifyNotDisposed();
-			if (Connection == null)
+			if (Connection is null)
 				throw new InvalidOperationException("Already committed or rolled back.");
 
 			if (Connection.CurrentTransaction == this)
@@ -57,7 +57,7 @@ namespace MySql.Data.MySqlClient
 			{
 				throw new InvalidOperationException("This is not the active transaction.");
 			}
-			else if (Connection.CurrentTransaction == null)
+			else if (Connection.CurrentTransaction is null)
 			{
 				throw new InvalidOperationException("There is no active transaction.");
 			}
@@ -76,7 +76,7 @@ namespace MySql.Data.MySqlClient
 					m_isDisposed = true;
 					if (Connection?.CurrentTransaction == this)
 					{
-						if (Connection.Session.IsConnected)
+						if (Connection.State == ConnectionState.Open && Connection.Session.IsConnected)
 						{
 							using (var cmd = new MySqlCommand("rollback", Connection, this))
 								cmd.ExecuteNonQuery();

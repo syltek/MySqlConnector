@@ -1,6 +1,7 @@
 using System;
 using System.Data.Common;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -16,9 +17,11 @@ using Xunit;
 #if BASELINE
 using GetValueWhenNullException = System.Data.SqlTypes.SqlNullValueException;
 using GetGuidWhenNullException = MySql.Data.MySqlClient.MySqlException;
+using GetBytesWhenNullException = System.NullReferenceException;
 #else
 using GetValueWhenNullException = System.InvalidCastException;
 using GetGuidWhenNullException = System.InvalidCastException;
+using GetBytesWhenNullException = System.InvalidCastException;
 #endif
 
 namespace SideBySide
@@ -343,6 +346,13 @@ namespace SideBySide
 		public void QueryString(string column, string[] expected)
 		{
 			DoQuery("strings", column, "VARCHAR", expected, reader => reader.GetString(0));
+#if !BASELINE
+			DoQuery("strings", column, "VARCHAR", expected, reader => reader.GetTextReader(0), matchesDefaultType: false, assertEqual: (e, a) =>
+			{
+				using (var actualReader = (TextReader) a)
+					Assert.Equal(e, actualReader.ReadToEnd());
+			}, getFieldValueType: typeof(TextReader));
+#endif
 		}
 		const string c_251ByteString = "This string has exactly 251 characters in it. The encoded length is stored as 0xFC 0xFB 0x00. 0xFB (i.e., 251) is the sentinel byte indicating \"this field is null\". Incorrectly interpreting the (decoded) length as the sentinel byte would corrupt data.";
 
@@ -371,7 +381,7 @@ namespace SideBySide
 					for (var i = 0; i < expected.Length; i++)
 					{
 						Assert.True(reader.Read());
-						if (expected[i] == null)
+						if (expected[i] is null)
 							Assert.True(reader.IsDBNull(0));
 						else if (expected[i].Length == 0)
 #if BASELINE
@@ -816,13 +826,20 @@ insert into date_time_kind(d, dt0, dt1, dt2, dt3, dt4, dt5, dt6) values(?, ?, ?,
 			if (data.Length < padLength)
 				Array.Resize(ref data, padLength);
 
-#if BASELINE
-			DoQuery<NullReferenceException>("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetBytes);
-			// https://bugs.mysql.com/bug.php?id=93374
-			// DoQuery<NullReferenceException>("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetStreamBytes);
-#else
-			DoQuery<InvalidCastException>("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetBytes);
-			DoQuery<InvalidCastException>("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetStreamBytes);
+			DoQuery<GetBytesWhenNullException>("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetBytes);
+#if !BASELINE // https://bugs.mysql.com/bug.php?id=93374
+			DoQuery("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, GetStreamBytes);
+			DoQuery("blobs", "`" + column + "`", "BLOB", new object[] { null, data }, reader => reader.GetStream(0), matchesDefaultType: false, assertEqual: (e, a) =>
+			{
+				using (var stream = (Stream) a)
+				{
+					Assert.True(stream.CanRead);
+					Assert.False(stream.CanWrite);
+					var bytes = new byte[stream.Length];
+					Assert.Equal(bytes.Length, stream.Read(bytes, 0, bytes.Length));
+					Assert.Equal(e, bytes);
+				}
+			}, getFieldValueType: typeof(Stream));
 #endif
 		}
 
@@ -930,22 +947,22 @@ insert into date_time_kind(d, dt0, dt1, dt2, dt3, dt4, dt5, dt6) values(?, ?, ?,
 		}
 
 		[Theory]
-		[InlineData(false, "Date", typeof(DateTime))]
-		[InlineData(true, "Date", typeof(MySqlDateTime))]
-		[InlineData(false, "DateTime", typeof(DateTime))]
-		[InlineData(true, "DateTime", typeof(MySqlDateTime))]
-		[InlineData(false, "TimeStamp", typeof(DateTime))]
-		[InlineData(true, "TimeStamp", typeof(MySqlDateTime))]
-		[InlineData(false, "Time", typeof(TimeSpan))]
-		[InlineData(true, "Time", typeof(TimeSpan))]
-		public void AllowZeroDateTime(bool allowZeroDateTime, string columnName, Type expectedType)
+		[InlineData(false, "Date", typeof(DateTime), "1000 01 01")]
+		[InlineData(true, "Date", typeof(MySqlDateTime), "1000 01 01")]
+		[InlineData(false, "DateTime", typeof(DateTime), "1000 01 01")]
+		[InlineData(true, "DateTime", typeof(MySqlDateTime), "1000 01 01")]
+		[InlineData(false, "TimeStamp", typeof(DateTime), "1970 01 01 0 0 1")]
+		[InlineData(true, "TimeStamp", typeof(MySqlDateTime), "1970 01 01 0 0 1")]
+		[InlineData(false, "Time", typeof(TimeSpan), null)]
+		[InlineData(true, "Time", typeof(TimeSpan), null)]
+		public void AllowZeroDateTime(bool allowZeroDateTime, string columnName, Type expectedType, string expectedDateTime)
 		{
 			var csb = CreateConnectionStringBuilder();
 			csb.AllowZeroDateTime = allowZeroDateTime;
 			using (var connection = new MySqlConnection(csb.ConnectionString))
 			{
 				connection.Open();
-				using (var cmd = new MySqlCommand($"SELECT `{columnName}` FROM datatypes_times WHERE `{columnName}` IS NOT NULL", connection))
+				using (var cmd = new MySqlCommand($"SELECT `{columnName}` FROM datatypes_times WHERE `{columnName}` IS NOT NULL ORDER BY rowid", connection))
 				{
 					cmd.Prepare();
 					using (var reader = cmd.ExecuteReader())
@@ -957,6 +974,13 @@ insert into date_time_kind(d, dt0, dt1, dt2, dt3, dt4, dt5, dt6) values(?, ?, ?,
 						var dt = reader.GetSchemaTable();
 						Assert.Equal(expectedType, dt.Rows[0]["DataType"]);
 #endif
+
+						if (expectedDateTime != null)
+						{
+							var expected = (DateTime) ConvertToDateTime(new object[] { expectedDateTime }, DateTimeKind.Unspecified)[0];
+							Assert.Equal(expected, reader.GetDateTime(0));
+							Assert.Equal(new MySqlDateTime(expected), reader.GetMySqlDateTime(0));
+						}
 					}
 				}
 			}
@@ -1338,9 +1362,11 @@ create table schema_table({createColumn});");
 			object baselineCoercedNullValue = null,
 			bool omitWhereTest = false,
 			bool matchesDefaultType = true,
-			MySqlConnection connection = null)
+			MySqlConnection connection = null,
+			Action<object, object> assertEqual = null,
+			Type getFieldValueType = null)
 		{
-			DoQuery<GetValueWhenNullException>(table, column, dataTypeName, expected, getValue, baselineCoercedNullValue, omitWhereTest, matchesDefaultType, connection);
+			DoQuery<GetValueWhenNullException>(table, column, dataTypeName, expected, getValue, baselineCoercedNullValue, omitWhereTest, matchesDefaultType, connection, assertEqual, getFieldValueType);
 		}
 
 		// NOTE: baselineCoercedNullValue is to work around inconsistencies in mysql-connector-net; DBNull.Value will
@@ -1354,10 +1380,13 @@ create table schema_table({createColumn});");
 			object baselineCoercedNullValue = null,
 			bool omitWhereTest = false,
 			bool matchesDefaultType = true,
-			MySqlConnection connection = null)
+			MySqlConnection connection = null,
+			Action<object, object> assertEqual = null,
+			Type getFieldValueType = null)
 			where TException : Exception
 		{
 			connection = connection ?? Connection;
+			assertEqual = assertEqual ?? Assert.Equal;
 			using (var cmd = connection.CreateCommand())
 			{
 				cmd.CommandText = $"select {column} from datatypes_{table} order by rowid";
@@ -1368,7 +1397,7 @@ create table schema_table({createColumn});");
 					foreach (var value in expected)
 					{
 						Assert.True(reader.Read());
-						if (value == null)
+						if (value is null)
 						{
 							Assert.Equal(DBNull.Value, reader.GetValue(0));
 #if BASELINE
@@ -1382,12 +1411,12 @@ create table schema_table({createColumn});");
 						}
 						else
 						{
-							Assert.Equal(value, getValue(reader));
+							assertEqual(value, getValue(reader));
 
 							// test `reader.GetValue` and `reader.GetFieldType` if value matches default type
 							if (matchesDefaultType)
 							{
-								Assert.Equal(value, reader.GetValue(0));
+								assertEqual(value, reader.GetValue(0));
 								Assert.Equal(value.GetType(), reader.GetFieldType(0));
 								Assert.Equal(value.GetType(), reader.GetFieldType(column.Replace("`", "")));
 							}
@@ -1395,13 +1424,13 @@ create table schema_table({createColumn});");
 							// test `reader.GetFieldValue<value.GetType()>`
 							var syncMethod = typeof(MySqlDataReader)
 								.GetMethod("GetFieldValue")
-								.MakeGenericMethod(value.GetType());
-							Assert.Equal(value, syncMethod.Invoke(reader, new object[] { 0 }));
+								.MakeGenericMethod(getFieldValueType ?? value.GetType());
+							assertEqual(value, syncMethod.Invoke(reader, new object[] { 0 }));
 
 							// test `reader.GetFieldValueAsync<value.GetType()>`
 							var asyncMethod = typeof(MySqlDataReader)
 								.GetMethod("GetFieldValueAsync", new[] { typeof(int) })
-								.MakeGenericMethod(value.GetType());
+								.MakeGenericMethod(getFieldValueType ?? value.GetType());
 							var asyncMethodValue = asyncMethod.Invoke(reader, new object[] { 0 });
 							var asyncMethodGetAwaiter = asyncMethodValue.GetType()
 								.GetMethod("GetAwaiter");
@@ -1409,7 +1438,7 @@ create table schema_table({createColumn});");
 							var asyncMethodGetResult = asyncMethodGetAwaiterValue.GetType()
 								.GetMethod("GetResult");
 							var asyncMethodGetResultValue = asyncMethodGetResult.Invoke(asyncMethodGetAwaiterValue, new object[] { });
-							Assert.Equal(value, asyncMethodGetResultValue);
+							assertEqual(value, asyncMethodGetResultValue);
 						}
 					}
 					Assert.False(reader.Read());
@@ -1475,7 +1504,7 @@ create table schema_table({createColumn});");
 		private static int[] SplitAndParse(object obj)
 		{
 			var value = obj as string;
-			if (value == null)
+			if (value is null)
 				return null;
 
 			var split = value.Split();

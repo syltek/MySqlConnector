@@ -118,7 +118,7 @@ namespace MySql.Data.MySqlClient
 			set
 			{
 				m_name = value;
-				NormalizedParameterName = value == null ? null : NormalizeParameterName(m_name);
+				NormalizedParameterName = value is null ? null : NormalizeParameterName(m_name);
 			}
 		}
 
@@ -199,7 +199,7 @@ namespace MySql.Data.MySqlClient
 
 		internal void AppendSqlString(ByteBufferWriter writer, StatementPreparerOptions options)
 		{
-			if (Value == null || Value == DBNull.Value)
+			if (Value is null || Value == DBNull.Value)
 			{
 				writer.Write(s_nullBytes);
 			}
@@ -254,26 +254,31 @@ namespace MySql.Data.MySqlClient
 			{
 				writer.WriteString(ulongValue);
 			}
-			else if (Value is byte[] byteArrayValue)
+			else if (Value is byte[] || Value is ReadOnlyMemory<byte> || Value is Memory<byte> || Value is ArraySegment<byte>)
 			{
+				var inputSpan = Value is byte[] byteArray ? byteArray.AsSpan() :
+					Value is ArraySegment<byte> arraySegment ? arraySegment.AsSpan() :
+					Value is Memory<byte> memory ? memory.Span :
+					((ReadOnlyMemory<byte>) Value).Span;
+
 				// determine the number of bytes to be written
-				var length = byteArrayValue.Length + s_binaryBytes.Length + 1;
-				foreach (var by in byteArrayValue)
+				var length = inputSpan.Length + s_binaryBytes.Length + 1;
+				foreach (var by in inputSpan)
 				{
 					if (by == 0x27 || by == 0x5C)
 						length++;
 				}
 
-				var span = writer.GetSpan(length);
-				s_binaryBytes.CopyTo(span);
+				var outputSpan = writer.GetSpan(length);
+				s_binaryBytes.CopyTo(outputSpan);
 				var index = s_binaryBytes.Length;
-				foreach (var by in byteArrayValue)
+				foreach (var by in inputSpan)
 				{
 					if (by == 0x27 || by == 0x5C)
-						span[index++] = 0x5C;
-					span[index++] = by;
+						outputSpan[index++] = 0x5C;
+					outputSpan[index++] = by;
 				}
-				span[index++] = 0x27;
+				outputSpan[index++] = 0x27;
 				Debug.Assert(index == length, "index == length");
 				writer.Advance(index);
 			}
@@ -402,7 +407,7 @@ namespace MySql.Data.MySqlClient
 
 		internal void AppendBinary(ByteBufferWriter writer, StatementPreparerOptions options)
 		{
-			if (Value == null || Value == DBNull.Value)
+			if (Value is null || Value == DBNull.Value)
 			{
 				// stored in "null bitmap" only
 			}
@@ -454,6 +459,21 @@ namespace MySql.Data.MySqlClient
 			{
 				writer.WriteLengthEncodedInteger(unchecked((ulong) byteArrayValue.Length));
 				writer.Write(byteArrayValue);
+			}
+			else if (Value is ReadOnlyMemory<byte> readOnlyMemoryValue)
+			{
+				writer.WriteLengthEncodedInteger(unchecked((ulong) readOnlyMemoryValue.Length));
+				writer.Write(readOnlyMemoryValue.Span);
+			}
+			else if (Value is Memory<byte> memoryValue)
+			{
+				writer.WriteLengthEncodedInteger(unchecked((ulong) memoryValue.Length));
+				writer.Write(memoryValue.Span);
+			}
+			else if (Value is ArraySegment<byte> arraySegmentValue)
+			{
+				writer.WriteLengthEncodedInteger(unchecked((ulong) arraySegmentValue.Count));
+				writer.Write(arraySegmentValue);
 			}
 			else if (Value is float floatValue)
 			{

@@ -1,10 +1,13 @@
 using System;
 using System.Data;
 using System.Diagnostics;
-using System.IO;
 using System.Security.Authentication;
+using System.Threading;
 using System.Threading.Tasks;
 using MySql.Data.MySqlClient;
+#if !BASELINE
+using MySqlConnector.Authentication.Ed25519;
+#endif
 using Xunit;
 
 namespace SideBySide
@@ -26,7 +29,16 @@ namespace SideBySide
 			using (var connection = new MySqlConnection(csb.ConnectionString))
 			{
 				Assert.Equal(ConnectionState.Closed, connection.State);
-				await Assert.ThrowsAsync<MySqlException>(() => connection.OpenAsync());
+				try
+				{
+					await connection.OpenAsync();
+					Assert.True(false, "Exception not thrown");
+				}
+				catch (MySqlException ex)
+				{
+					Assert.Equal((int) MySqlErrorCode.UnableToConnectToHost, ex.Number);
+					Assert.Equal((int) MySqlErrorCode.UnableToConnectToHost, ex.Data["Server Error Code"]);
+				}
 				Assert.Equal(ConnectionState.Closed, connection.State);
 			}
 		}
@@ -120,15 +132,55 @@ namespace SideBySide
 			{
 				Server = "www.mysql.com",
 				Pooling = false,
-				ConnectionTimeout = 3,
+				ConnectionTimeout = 2,
 			};
 
 			using (var connection = new MySqlConnection(csb.ConnectionString))
 			{
 				var stopwatch = Stopwatch.StartNew();
-				await Assert.ThrowsAsync<MySqlException>(async () => await connection.OpenAsync());
+				try
+				{
+					await connection.OpenAsync();
+					Assert.True(false);
+				}
+				catch (MySqlException ex)
+				{
+					Assert.Equal((int) MySqlErrorCode.UnableToConnectToHost, ex.Number);
+				}
 				stopwatch.Stop();
-				TestUtilities.AssertDuration(stopwatch, 2900, 1500);
+				TestUtilities.AssertDuration(stopwatch, 1900, 1500);
+			}
+		}
+
+
+		[SkippableFact(ServerFeatures.Timeout, Baseline = "https://bugs.mysql.com/bug.php?id=94760")]
+		public async Task ConnectTimeoutAsyncCancellationToken()
+		{
+			// skip on Azure Pipelines, as this one seems to consistently time out
+			if (Environment.GetEnvironmentVariable("TF_BUILD") == "True")
+				return;
+
+			var csb = new MySqlConnectionStringBuilder
+			{
+				Server = "www.mysql.com",
+				Pooling = false,
+			};
+
+			using (var connection = new MySqlConnection(csb.ConnectionString))
+			{
+				var stopwatch = Stopwatch.StartNew();
+				try
+				{
+					using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+						await connection.OpenAsync(cts.Token);
+					Assert.True(false);
+				}
+				catch (MySqlException ex)
+				{
+					Assert.Equal((int) MySqlErrorCode.UnableToConnectToHost, ex.Number);
+				}
+				stopwatch.Stop();
+				TestUtilities.AssertDuration(stopwatch, 1900, 1500);
 			}
 		}
 
@@ -300,6 +352,23 @@ namespace SideBySide
 				await connection.OpenAsync();
 			}
 		}
+
+#if !BASELINE
+#if !NETCOREAPP1_1_2 && !NETCOREAPP2_0
+		[SkippableFact(ServerFeatures.Ed25519)]
+		public async Task Ed25519Authentication()
+		{
+			Ed25519AuthenticationPlugin.Install();
+
+			var csb = AppConfig.CreateConnectionStringBuilder();
+			csb.UserID = "ed25519user";
+			csb.Password = "Ed255!9";
+			csb.Database = null;
+			using (var connection = new MySqlConnection(csb.ConnectionString))
+				await connection.OpenAsync();
+		}
+#endif
+#endif
 
 		// To create a MariaDB GSSAPI user for a current user
 		// - install plugin if not already done , e.g mysql -uroot -e "INSTALL SONAME 'auth_gssapi'"

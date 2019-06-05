@@ -85,10 +85,29 @@ namespace MySql.Data.MySqlClient
 			set => MySqlConnectionStringOption.CertificatePassword.SetValue(this, value);
 		}
 
+		public string SslCert
+		{
+			get => MySqlConnectionStringOption.SslCert.GetValue(this);
+			set => MySqlConnectionStringOption.SslCert.SetValue(this, value);
+		}
+
+		public string SslKey
+		{
+			get => MySqlConnectionStringOption.SslKey.GetValue(this);
+			set => MySqlConnectionStringOption.SslKey.SetValue(this, value);
+		}
+
+		[Obsolete("Use SslCa instead.")]
 		public string CACertificateFile
 		{
-			get => MySqlConnectionStringOption.CACertificateFile.GetValue(this);
-			set => MySqlConnectionStringOption.CACertificateFile.SetValue(this, value);
+			get => MySqlConnectionStringOption.SslCa.GetValue(this);
+			set => MySqlConnectionStringOption.SslCa.SetValue(this, value);
+		}
+
+		public string SslCa
+		{
+			get => MySqlConnectionStringOption.SslCa.GetValue(this);
+			set => MySqlConnectionStringOption.SslCa.SetValue(this, value);
 		}
 
 		public MySqlCertificateStoreLocation CertificateStoreLocation
@@ -153,6 +172,12 @@ namespace MySql.Data.MySqlClient
 		}
 
 		// Other Options
+		public bool AllowLoadLocalInfile
+		{
+			get => MySqlConnectionStringOption.AllowLoadLocalInfile.GetValue(this);
+			set => MySqlConnectionStringOption.AllowLoadLocalInfile.SetValue(this, value);
+		}
+
 		public bool AllowPublicKeyRetrieval
 		{
 			get => MySqlConnectionStringOption.AllowPublicKeyRetrieval.GetValue(this);
@@ -291,6 +316,12 @@ namespace MySql.Data.MySqlClient
 			set => MySqlConnectionStringOption.UseCompression.SetValue(this, value);
 		}
 
+		public bool UseXaTransactions
+		{
+			get => MySqlConnectionStringOption.UseXaTransactions.GetValue(this);
+			set => MySqlConnectionStringOption.UseXaTransactions.SetValue(this, value);
+		}
+
 		// Other Methods
 		public override bool ContainsKey(string key)
 		{
@@ -352,7 +383,9 @@ namespace MySql.Data.MySqlClient
 		public static readonly MySqlConnectionStringOption<string> CertificatePassword;
 		public static readonly MySqlConnectionStringOption<MySqlCertificateStoreLocation> CertificateStoreLocation;
 		public static readonly MySqlConnectionStringOption<string> CertificateThumbprint;
-		public static readonly MySqlConnectionStringOption<string> CACertificateFile;
+		public static readonly MySqlConnectionStringOption<string> SslCa;
+		public static readonly MySqlConnectionStringOption<string> SslCert;
+		public static readonly MySqlConnectionStringOption<string> SslKey;
 
 		// Connection Pooling Options
 		public static readonly MySqlConnectionStringOption<bool> Pooling;
@@ -365,6 +398,7 @@ namespace MySql.Data.MySqlClient
 		public static readonly MySqlConnectionStringOption<bool> ServerLevelPooling;
 
 		// Other Options
+		public static readonly MySqlConnectionStringOption<bool> AllowLoadLocalInfile;
 		public static readonly MySqlConnectionStringOption<bool> AllowPublicKeyRetrieval;
 		public static readonly MySqlConnectionStringOption<bool> AllowUserVariables;
 		public static readonly MySqlConnectionStringOption<bool> AllowZeroDateTime;
@@ -388,6 +422,7 @@ namespace MySql.Data.MySqlClient
 		public static readonly MySqlConnectionStringOption<bool> TreatTinyAsBoolean;
 		public static readonly MySqlConnectionStringOption<bool> UseAffectedRows;
 		public static readonly MySqlConnectionStringOption<bool> UseCompression;
+		public static readonly MySqlConnectionStringOption<bool> UseXaTransactions;
 
 		public static MySqlConnectionStringOption TryGetOptionForKey(string key) =>
 			s_options.TryGetValue(key, out var option) ? option : null;
@@ -461,8 +496,16 @@ namespace MySql.Data.MySqlClient
 				keys: new[] { "CertificatePassword", "Certificate Password" },
 				defaultValue: null));
 
-			AddOption(CACertificateFile = new MySqlConnectionStringOption<string>(
-				keys: new[] { "CACertificateFile", "CA Certificate File" },
+			AddOption(SslCa = new MySqlConnectionStringOption<string>(
+				keys: new[] { "CACertificateFile", "CA Certificate File", "SslCa", "Ssl-Ca" },
+				defaultValue: null));
+
+			AddOption(SslCert = new MySqlConnectionStringOption<string>(
+				keys: new[] { "SslCert", "Ssl-Cert" },
+				defaultValue: null));
+
+			AddOption(SslKey = new MySqlConnectionStringOption<string>(
+				keys: new[] { "SslKey", "Ssl-Key" },
 				defaultValue: null));
 
 			AddOption(CertificateStoreLocation = new MySqlConnectionStringOption<MySqlCertificateStoreLocation>(
@@ -508,6 +551,10 @@ namespace MySql.Data.MySqlClient
 				));
 
 			// Other Options
+			AddOption(AllowLoadLocalInfile = new MySqlConnectionStringOption<bool>(
+				keys: new[] { "AllowLoadLocalInfile", "Allow Load Local Infile" },
+				defaultValue: false));
+
 			AddOption(AllowPublicKeyRetrieval = new MySqlConnectionStringOption<bool>(
 				keys: new[] { "AllowPublicKeyRetrieval", "Allow Public Key Retrieval" },
 				defaultValue: false));
@@ -594,11 +641,15 @@ namespace MySql.Data.MySqlClient
 
 			AddOption(UseAffectedRows = new MySqlConnectionStringOption<bool>(
 				keys: new[] { "Use Affected Rows", "UseAffectedRows" },
-				defaultValue: true));
+				defaultValue: false));
 
 			AddOption(UseCompression = new MySqlConnectionStringOption<bool>(
 				keys: new[] { "Compress", "Use Compression", "UseCompression" },
 				defaultValue: false));
+
+			AddOption(UseXaTransactions = new MySqlConnectionStringOption<bool>(
+				keys: new[] { "Use XA Transactions", "UseXaTransactions" },
+				defaultValue: true));
 		}
 
 		static readonly Dictionary<string, MySqlConnectionStringOption> s_options;
@@ -620,7 +671,7 @@ namespace MySql.Data.MySqlClient
 
 		public void SetValue(MySqlConnectionStringBuilder builder, T value)
 		{
-			builder[Key] = m_coerce != null ? m_coerce(value) : value;
+			builder[Key] = m_coerce is null ? value : m_coerce(value);
 		}
 
 		public override object GetObject(MySqlConnectionStringBuilder builder)

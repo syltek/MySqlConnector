@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
@@ -380,7 +381,7 @@ create table insert_mysql_enums(
 		}
 
 		[Fact]
-		public void InsertMySqSet()
+		public void InsertMySqlSet()
 		{
 			m_database.Connection.Execute(@"drop table if exists insert_mysql_set;
 create table insert_mysql_set(
@@ -390,6 +391,48 @@ create table insert_mysql_set(
 			m_database.Connection.Execute(@"insert into insert_mysql_set(value) values('one'), ('two'), ('one,two'), ('four'), ('four,one'), ('four,two'), ('four,two,one'), ('eight');");
 			Assert.Equal(new[] { "one", "one,two", "one,four", "one,two,four" }, m_database.Connection.Query<string>(@"select value from insert_mysql_set where find_in_set('one', value) order by rowid"));
 		}
+
+
+#if !BASELINE
+		[Theory]
+		[MemberData(nameof(GetBlobs))]
+		public void InsertBlob(object data, bool prepare)
+		{
+			using (var connection = new MySqlConnection(AppConfig.ConnectionString + ";IgnorePrepare=false"))
+			{
+				connection.Open();
+				connection.Execute(@"drop table if exists insert_mysql_blob;
+create table insert_mysql_blob(
+	rowid integer not null primary key auto_increment,
+	value mediumblob null
+);");
+
+				using (var cmd = new MySqlCommand("insert into insert_mysql_blob(value) values(@data);", connection))
+				{
+					cmd.Parameters.AddWithValue("@data", data);
+					if (prepare)
+						cmd.Prepare();
+					cmd.ExecuteNonQuery();
+				}
+				Assert.Equal(new byte[] { 1, 2, 3, 4, 5, 6 }, connection.Query<byte[]>(@"select value from insert_mysql_blob;").Single());
+			}
+		}
+
+		public static IEnumerable<object[]> GetBlobs()
+		{
+			foreach (var blob in new object[]
+			{
+				new byte[] { 1, 2, 3, 4, 5, 6 },
+				new ReadOnlyMemory<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, 1, 6),
+				new Memory<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, 1, 6),
+				new ArraySegment<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, 1, 6),
+			})
+			{
+				yield return new[] { blob, false };
+				yield return new[] { blob, true };
+			}
+		}
+#endif
 
 		readonly DatabaseFixture m_database;
 	}

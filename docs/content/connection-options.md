@@ -93,7 +93,7 @@ These are the options that need to be used in order to configure a connection to
   <tr>
     <td>Certificate File, CertificateFile</td>
     <td></td>
-    <td>Specifies the path to a certificate file in PKCS #12 (.pfx) format containing a bundled Certificate and Private Key used for Mutual Authentication.  To create a PKCS #12 bundle from a PEM encoded Certificate and Key, use <code>openssl pkcs12 -in cert.pem -inkey key.pem -export -out bundle.pfx</code></td>
+    <td>Specifies the path to a certificate file in PKCS #12 (.pfx) format containing a bundled Certificate and Private Key used for Mutual Authentication.  To create a PKCS #12 bundle from a PEM encoded Certificate and Key, use <code>openssl pkcs12 -in cert.pem -inkey key.pem -export -out bundle.pfx</code>. This option should not be specified if <code>SslCert</code> and <code>SslKey</code> are used.</td>
   </tr>
   <tr>
     <td>Certificate Password, CertificatePassword</td>
@@ -101,9 +101,19 @@ These are the options that need to be used in order to configure a connection to
     <td>Specifies the password for the certificate specified using the <code>CertificateFile</code> option. Not required if the certificate file is not password protected.</td>
   </tr>
   <tr>
-    <td>CA Certificate File, CACertificateFile</td>
+    <td>SslCert, Ssl-Cert</td>
     <td></td>
-    <td>This option specifies the path to a CA certificate file in a PEM Encoded (.pem) format. This should be used in with <code>SslMode=VerifyCA</code> or <code>SslMode=VerifyFull</code> to enable verification of a CA certificate that is not trusted by the Operating System's certificate store.</td>
+    <td>Specifies the path to the client’s SSL certificate file in PEM format. <code>SslKey</code> must also be specified, and <code>CertificateFile</code> should not be. This option is not supported on the <code>netstandard1.3</code> or <code>netstandard2.0</code> platforms.</td>
+  </tr>
+  <tr>
+    <td>SslKey, Ssl-Key</td>
+    <td></td>
+    <td>Specifies the path to the client’s SSL private key in PEM format. <code>SslCert</code> must also be specified, and <code>CertificateFile</code> should not be.</td>
+  </tr>
+  <tr>
+    <td>CA Certificate File, CACertificateFile, SslCa, Ssl-Ca</td>
+    <td></td>
+    <td>This option specifies the path to a CA certificate file in a PEM Encoded (.pem) format. This should be used with <code>SslMode=VerifyCA</code> or <code>SslMode=VerifyFull</code> to enable verification of a CA certificate that is not trusted by the Operating System’s certificate store.</td>
   </tr>
   <tr>
     <td>Certificate Store Location, CertificateStoreLocation</td>
@@ -226,6 +236,11 @@ These are the other options that MySqlConnector supports. They are set to sensib
     e.g., as the “Program” column in “Client Connections” in <a href="https://www.mysql.com/products/workbench/">MySQL Workbench</a>.</td>
   </tr>
   <tr>
+    <td>CharSet, Character Set, CharacterSet</td>
+    <td></td>
+    <td>MySqlConnector always uses <code>utf8mb4</code> to send and receive strings from MySQL Server. This option may be specified (for backwards compatibility) but it will be ignored.</td>
+  </tr>
+  <tr>
     <td>Compress, Use Compression, UseCompression</td>
     <td>false</td>
     <td>If true (and if the server supports compression), compresses packets sent between client and server. This option is unlikely to be useful in
@@ -283,7 +298,7 @@ These are the other options that MySqlConnector supports. They are set to sensib
     <td>IgnoreCommandTransaction, Ignore Command Transaction</td>
     <td>false</td>
     <td>If <code>true</code>, the value of <code>MySqlCommand.Transaction</code> is ignored when commands are executed.
-    This matches the Connector/NET behaviour and can make porting code easier. For more information, see <a href="https://github.com/mysql-net/MySqlConnector/issues/474">Issue 474</a>.</td>
+    This matches the Connector/NET behaviour and can make porting code easier. For more information, see <a href="troubleshooting/transaction-usage/">Transaction Usage</a>.</td>
   </tr>
   <tr>
     <td>Interactive, Interactive Session, InteractiveSession</td>
@@ -340,7 +355,15 @@ These are the other options that MySqlConnector supports. They are set to sensib
   </tr>
   <tr>
     <td>Use Affected Rows, UseAffectedRows</td>
+    <td>false</td>
+    <td>When <code>false</code> (default), the connection reports found rows instead of changed (affected) rows. Set to <code>true</code> to report only the number of rows actually changed by <code>UPDATE</code> or <code>INSERT … ON DUPLICATE KEY UPDATE</code> statements.</td>
+  </tr>
+  <tr>
+    <td>Use XA Transactions, UseXaTransactions</td>
     <td>true</td>
-    <td>When false, the connection reports found rows instead of changed (affected) rows.</td>
+    <td>When <code>true</code> (default), using <code>TransactionScope</code> or <code>MySqlConnection.EnlistTransaction</code>
+    will use a <a href="https://dev.mysql.com/doc/refman/8.0/en/xa.html">XA Transaction</a>. This allows true
+    distributed transactions, but may not be compatible with server replication; there are <a href="https://dev.mysql.com/doc/refman/8.0/en/xa-restrictions.html">other limitations</a>.
+    When set to <code>false</code>, regular MySQL transactions are used, just like Connector/NET.</td>
   </tr>
 </table>
