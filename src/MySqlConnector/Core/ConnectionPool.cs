@@ -43,7 +43,7 @@ namespace MySqlConnector.Core
 			else
 				m_sessionSemaphore.Wait(cancellationToken);
 
-			ServerSession session = null;
+			ServerSession? session = null;
 			try
 			{
 				// check for a waiting session
@@ -51,11 +51,11 @@ namespace MySqlConnector.Core
 				{
 					if (m_sessions.Count > 0)
 					{
-						session = m_sessions.First.Value;
+						session = m_sessions.First!.Value;
 						m_sessions.RemoveFirst();
 					}
 				}
-				if (session != null)
+				if (session is object)
 				{
 					Log.Debug("Pool{0} found an existing session; checking it for validity", m_logArguments);
 					bool reuseSession;
@@ -67,7 +67,7 @@ namespace MySqlConnector.Core
 					}
 					else
 					{
-						if (ConnectionSettings.ConnectionReset || session.DatabaseOverride != null)
+						if (ConnectionSettings.ConnectionReset || session.DatabaseOverride is object)
 						{
 							reuseSession = await session.TryResetConnectionAsync(ConnectionSettings, ioBehavior, cancellationToken).ConfigureAwait(false);
 						}
@@ -123,7 +123,7 @@ namespace MySqlConnector.Core
 			}
 			catch (Exception ex)
 			{
-				if (session != null)
+				if (session is object)
 				{
 					try
 					{
@@ -211,12 +211,12 @@ namespace MySqlConnector.Core
 		/// object is shared between multiple threads and is only safe to use after taking a <c>lock</c> on the
 		/// object itself.
 		/// </summary>
-		public Dictionary<string, CachedProcedure> GetProcedureCache()
+		public Dictionary<string, CachedProcedure?> GetProcedureCache()
 		{
 			var procedureCache = m_procedureCache;
 			if (procedureCache is null)
 			{
-				var newProcedureCache = new Dictionary<string, CachedProcedure>();
+				var newProcedureCache = new Dictionary<string, CachedProcedure?>();
 				procedureCache = Interlocked.CompareExchange(ref m_procedureCache, newProcedureCache, null) ?? newProcedureCache;
 			}
 			return procedureCache;
@@ -281,12 +281,12 @@ namespace MySqlConnector.Core
 					try
 					{
 						// check for a waiting session
-						ServerSession session = null;
+						ServerSession? session = null;
 						lock (m_sessions)
 						{
 							if (m_sessions.Count > 0)
 							{
-								session = m_sessions.Last.Value;
+								session = m_sessions.Last!.Value;
 								m_sessions.RemoveLast();
 							}
 						}
@@ -360,7 +360,7 @@ namespace MySqlConnector.Core
 			}
 		}
 
-		public static ConnectionPool GetPool(string connectionString)
+		public static ConnectionPool? GetPool(string connectionString)
 		{
 			// check single-entry MRU cache for this exact connection string; most applications have just one
 			// connection string and will get a cache hit here
@@ -390,7 +390,7 @@ namespace MySqlConnector.Core
 			{
 				// try to set the pool for the connection string to the canonical pool; if someone else
 				// beats us to it, just use the existing value
-				pool = s_pools.GetOrAdd(connectionString, pool);
+				pool = s_pools.GetOrAdd(connectionString, pool)!;
 				s_mruCache = new ConnectionStringPool(connectionString, pool);
 				return pool;
 			}
@@ -441,7 +441,7 @@ namespace MySqlConnector.Core
 			var uniquePools = new HashSet<ConnectionPool>();
 			foreach (var pool in s_pools.Values)
 			{
-				if (pool != null && uniquePools.Add(pool))
+				if (pool is object && uniquePools.Add(pool))
 					pools.Add(pool);
 			}
 			return pools;
@@ -461,17 +461,17 @@ namespace MySqlConnector.Core
 			m_sessionSemaphore = new SemaphoreSlim(cs.MaximumPoolSize);
 			m_sessions = new LinkedList<ServerSession>();
 			m_leasedSessions = new Dictionary<string, ServerSession>();
-			if (cs.LoadBalance == MySqlLoadBalance.LeastConnections)
+			if (cs.ConnectionProtocol == MySqlConnectionProtocol.Sockets && cs.LoadBalance == MySqlLoadBalance.LeastConnections)
 			{
 				m_hostSessions = new Dictionary<string, int>();
-				foreach (var hostName in cs.HostNames)
+				foreach (var hostName in cs.HostNames!)
 					m_hostSessions[hostName] = 0;
 			}
 
 			m_loadBalancer = cs.ConnectionProtocol != MySqlConnectionProtocol.Sockets ? null :
-				cs.HostNames.Count == 1 || cs.LoadBalance == MySqlLoadBalance.FailOver ? FailOverLoadBalancer.Instance :
+				cs.HostNames!.Count == 1 || cs.LoadBalance == MySqlLoadBalance.FailOver ? FailOverLoadBalancer.Instance :
 				cs.LoadBalance == MySqlLoadBalance.Random ? RandomLoadBalancer.Instance :
-				cs.LoadBalance == MySqlLoadBalance.LeastConnections ? new LeastConnectionsLoadBalancer(this) :
+				cs.LoadBalance == MySqlLoadBalance.LeastConnections ? new LeastConnectionsLoadBalancer(m_hostSessions!) :
 				(ILoadBalancer) new RoundRobinLoadBalancer();
 
 			Id = Interlocked.Increment(ref s_poolId);
@@ -507,7 +507,7 @@ namespace MySqlConnector.Core
 
 		private void AdjustHostConnectionCount(ServerSession session, int delta)
 		{
-			if (m_hostSessions != null)
+			if (m_hostSessions is object)
 			{
 				lock (m_hostSessions)
 					m_hostSessions[session.HostName] += delta;
@@ -516,27 +516,27 @@ namespace MySqlConnector.Core
 
 		private sealed class LeastConnectionsLoadBalancer : ILoadBalancer
 		{
-			public LeastConnectionsLoadBalancer(ConnectionPool pool) => m_pool = pool;
+			public LeastConnectionsLoadBalancer(Dictionary<string, int> hostSessions) => m_hostSessions = hostSessions;
 
 			public IEnumerable<string> LoadBalance(IReadOnlyList<string> hosts)
 			{
-				lock (m_pool.m_hostSessions)
-					return m_pool.m_hostSessions.OrderBy(x => x.Value).Select(x => x.Key).ToList();
+				lock (m_hostSessions)
+					return m_hostSessions.OrderBy(x => x.Value).Select(x => x.Key).ToList();
 			}
 
-			readonly ConnectionPool m_pool;
+			readonly Dictionary<string, int> m_hostSessions;
 		}
 
 		private sealed class ConnectionStringPool
 		{
-			public ConnectionStringPool(string connectionString, ConnectionPool pool)
+			public ConnectionStringPool(string connectionString, ConnectionPool? pool)
 			{
 				ConnectionString = connectionString;
 				Pool = pool;
 			}
 
 			public string ConnectionString { get; }
-			public ConnectionPool Pool { get; }
+			public ConnectionPool? Pool { get; }
 		}
 
 #if !NETSTANDARD1_3
@@ -546,26 +546,26 @@ namespace MySqlConnector.Core
 			AppDomain.CurrentDomain.ProcessExit += OnAppDomainShutDown;
 		}
 
-		static void OnAppDomainShutDown(object sender, EventArgs e) => ClearPoolsAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
+		static void OnAppDomainShutDown(object? sender, EventArgs e) => ClearPoolsAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 #endif
 
 		static readonly IMySqlConnectorLogger Log = MySqlConnectorLogManager.CreateLogger(nameof(ConnectionPool));
-		static readonly ConcurrentDictionary<string, ConnectionPool> s_pools = new ConcurrentDictionary<string, ConnectionPool>();
+		static readonly ConcurrentDictionary<string, ConnectionPool?> s_pools = new ConcurrentDictionary<string, ConnectionPool?>();
 
 		static int s_poolId;
-		static ConnectionStringPool s_mruCache;
+		static ConnectionStringPool? s_mruCache;
 
 		int m_generation;
 		readonly SemaphoreSlim m_cleanSemaphore;
 		readonly SemaphoreSlim m_sessionSemaphore;
 		readonly LinkedList<ServerSession> m_sessions;
 		readonly Dictionary<string, ServerSession> m_leasedSessions;
-		readonly ILoadBalancer m_loadBalancer;
-		readonly Dictionary<string, int> m_hostSessions;
+		readonly ILoadBalancer? m_loadBalancer;
+		readonly Dictionary<string, int>? m_hostSessions;
 		readonly object[] m_logArguments;
-		Task m_reaperTask;
+		Task? m_reaperTask;
 		uint m_lastRecoveryTime;
 		int m_lastSessionId;
-		Dictionary<string, CachedProcedure> m_procedureCache;
+		Dictionary<string, CachedProcedure?>? m_procedureCache;
 	}
 }

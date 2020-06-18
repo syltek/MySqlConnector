@@ -11,7 +11,7 @@ namespace MySqlConnector.Protocol.Payloads
 		public byte[] ServerVersion { get; }
 		public int ConnectionId { get; }
 		public byte[] AuthPluginData { get; }
-		public string AuthPluginName { get; }
+		public string? AuthPluginName { get; }
 
 		public static InitialHandshakePayload Create(ReadOnlySpan<byte> span)
 		{
@@ -19,9 +19,9 @@ namespace MySqlConnector.Protocol.Payloads
 			reader.ReadByte(c_protocolVersion);
 			var serverVersion = reader.ReadNullTerminatedByteString();
 			var connectionId = reader.ReadInt32();
-			byte[] authPluginData = null;
+			byte[]? authPluginData = null;
 			var authPluginData1 = reader.ReadByteString(8);
-			string authPluginName = null;
+			string? authPluginName = null;
 			reader.ReadByte(0);
 			var protocolCapabilities = (ProtocolCapabilities) reader.ReadUInt16();
 			if (reader.BytesRemaining > 0)
@@ -29,9 +29,17 @@ namespace MySqlConnector.Protocol.Payloads
 				var charSet = (CharacterSet) reader.ReadByte();
 				var status = (ServerStatus) reader.ReadInt16();
 				var capabilityFlagsHigh = reader.ReadUInt16();
-				protocolCapabilities |= (ProtocolCapabilities) (capabilityFlagsHigh << 16);
+				protocolCapabilities |= (ProtocolCapabilities) ((ulong) capabilityFlagsHigh << 16);
 				var authPluginDataLength = reader.ReadByte();
-				var unused = reader.ReadByteString(10);
+				var unused = reader.ReadByteString(6);
+
+				long extendedCapabilites = reader.ReadInt32();
+				if ((protocolCapabilities & ProtocolCapabilities.LongPassword) == 0)
+				{
+					// MariaDB clears the CLIENT_LONG_PASSWORD flag to indicate it's not a MySQL Server
+					protocolCapabilities |= (ProtocolCapabilities) (extendedCapabilites << 32);
+				}
+
 				if ((protocolCapabilities & ProtocolCapabilities.SecureConnection) != 0)
 				{
 					var authPluginData2 = reader.ReadByteString(Math.Max(13, authPluginDataLength - 8));
@@ -51,7 +59,7 @@ namespace MySqlConnector.Protocol.Payloads
 			return new InitialHandshakePayload(protocolCapabilities, serverVersion.ToArray(), connectionId, authPluginData, authPluginName);
 		}
 
-		private InitialHandshakePayload(ProtocolCapabilities protocolCapabilities, byte[] serverVersion, int connectionId, byte[] authPluginData, string authPluginName)
+		private InitialHandshakePayload(ProtocolCapabilities protocolCapabilities, byte[] serverVersion, int connectionId, byte[] authPluginData, string? authPluginName)
 		{
 			ProtocolCapabilities = protocolCapabilities;
 			ServerVersion = serverVersion;

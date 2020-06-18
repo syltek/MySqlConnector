@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using MySql.Data.MySqlClient;
 using MySqlConnector.Core;
+using MySqlConnector.Protocol.Serialization;
 using Xunit;
 
 namespace MySqlConnector.Tests
@@ -20,7 +21,7 @@ namespace MySqlConnector.Tests
 			var parameters = new MySqlParameterCollection();
 			parameters.AddWithValue("@param", 123);
 			var parsedSql = GetParsedSql(sql, parameters);
-			Assert.Equal(sql.Replace("@param", "123"), parsedSql);
+			Assert.Equal(sql.Replace("@param", "123") + ";", parsedSql);
 		}
 
 		[Theory]
@@ -59,11 +60,11 @@ namespace MySqlConnector.Tests
 		[InlineData(null, DummyEnum.FirstValue, "0")]
 		public void EnumParametersAreParsedCorrectly(MySqlDbType? type, object value, string replacedValue)
 		{
-			const string sql = "SELECT @param";
+			const string sql = "SELECT @param;";
 			var parameters = new MySqlParameterCollection();
 			var parameter = new MySqlParameter("@param", value);
 
-			if (type != null)
+			if (type is object)
 			{
 				parameter.MySqlDbType = type.Value;
 			}
@@ -128,7 +129,7 @@ SELECT @'var' as R")]
 			var parameters = new MySqlParameterCollection();
 			parameters.AddWithValue("@foo", 22);
 			var parsedSql = GetParsedSql(sql, parameters, StatementPreparerOptions.AllowUserVariables);
-			Assert.Equal(sql.Replace("@foo", "22"), parsedSql);
+			Assert.Equal(sql.Replace("@foo", "22") + ";", parsedSql);
 		}
 
 		[Theory]
@@ -136,7 +137,7 @@ SELECT @'var' as R")]
 		public void FormatParameter(object parameterValue, string replacedValue)
 		{
 			var parameters = new MySqlParameterCollection { new MySqlParameter("@param", parameterValue) };
-			const string sql = "SELECT @param";
+			const string sql = "SELECT @param;";
 			var parsedSql = GetParsedSql(sql, parameters);
 			Assert.Equal(sql.Replace("@param", replacedValue), parsedSql);
 		}
@@ -177,9 +178,37 @@ SELECT @'var' as R")]
 		public void GuidFormat(object options, string replacedValue)
 		{
 			var parameters = new MySqlParameterCollection { new MySqlParameter("@param", new Guid("61626364-6566-6768-696a-6b6c6d6e6f70")) };
-			const string sql = "SELECT @param";
+			const string sql = "SELECT @param;";
 			var parsedSql = GetParsedSql(sql, parameters, (StatementPreparerOptions) options);
 			Assert.Equal(sql.Replace("@param", replacedValue), parsedSql);
+		}
+
+		[Theory]
+		[InlineData("SELECT 1;", "SELECT 1;", true)]
+		[InlineData("SELECT 1", "SELECT 1;", true)]
+		[InlineData("SELECT 1 -- comment", "SELECT 1 -- comment\n;", true)]
+		[InlineData("SELECT 1 # comment", "SELECT 1 # comment\n;", true)]
+		[InlineData("SELECT '1", "SELECT '1", false)]
+		[InlineData("SELECT '1' /* test", "SELECT '1' /* test", false)]
+		[InlineData("SELECT '1';", "SELECT '1';", true)]
+		[InlineData("SELECT '1'", "SELECT '1';", true)]
+		[InlineData("SELECT \"1\";", "SELECT \"1\";", true)]
+		[InlineData("SELECT \"1\"", "SELECT \"1\";", true)]
+		[InlineData("SELECT * FROM `SELECT`;", "SELECT * FROM `SELECT`;", true)]
+		[InlineData("SELECT * FROM `SELECT`", "SELECT * FROM `SELECT`;", true)]
+		[InlineData("SELECT * FROM test WHERE id = ?;", "SELECT * FROM test WHERE id = 0;", true)]
+		[InlineData("SELECT * FROM test WHERE id = ?", "SELECT * FROM test WHERE id = 0;", true)]
+		public void CompleteStatements(string sql, string expectedSql, bool expectedComplete)
+		{
+			var parameters = new MySqlParameterCollection { new MySqlParameter { Value = 0 } };
+			var preparer = new StatementPreparer(sql, parameters, new StatementPreparerOptions());
+			var writer = new ByteBufferWriter();
+			var isComplete = preparer.ParseAndBindParameters(writer);
+			Assert.Equal(expectedComplete, isComplete);
+			string parsedSql;
+			using (var payload = writer.ToPayloadData())
+				parsedSql = Encoding.UTF8.GetString(payload.Span);
+			Assert.Equal(expectedSql, parsedSql);
 		}
 
 		[Theory]
@@ -241,7 +270,13 @@ SELECT @'var' as R")]
 			}
 		}
 
-		private static string GetParsedSql(string input, MySqlParameterCollection parameters = null, StatementPreparerOptions options = StatementPreparerOptions.None) =>
-			Encoding.UTF8.GetString(new StatementPreparer(input, parameters ?? new MySqlParameterCollection(), options).ParseAndBindParameters().Slice(1));
+		private static string GetParsedSql(string input, MySqlParameterCollection parameters = null, StatementPreparerOptions options = StatementPreparerOptions.None)
+		{
+			var preparer = new StatementPreparer(input, parameters ?? new MySqlParameterCollection(), options);
+			var writer = new ByteBufferWriter();
+			preparer.ParseAndBindParameters(writer);
+			using (var payload = writer.ToPayloadData())
+				return Encoding.UTF8.GetString(payload.Span);
+		}
 	}
 }

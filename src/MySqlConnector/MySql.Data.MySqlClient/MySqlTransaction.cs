@@ -1,17 +1,22 @@
+#nullable disable
 using System;
 using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using MySqlConnector.Protocol.Serialization;
+using MySqlConnector.Utilities;
 
 namespace MySql.Data.MySqlClient
 {
 	public sealed class MySqlTransaction : DbTransaction
 	{
 		public override void Commit() => CommitAsync(IOBehavior.Synchronous, default).GetAwaiter().GetResult();
-		public Task CommitAsync() => CommitAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, default);
-		public Task CommitAsync(CancellationToken cancellationToken) => CommitAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		public Task CommitAsync(CancellationToken cancellationToken = default) => CommitAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#else
+		public override Task CommitAsync(CancellationToken cancellationToken = default) => CommitAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#endif
 
 		private async Task CommitAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
@@ -26,7 +31,7 @@ namespace MySql.Data.MySqlClient
 				Connection.CurrentTransaction = null;
 				Connection = null;
 			}
-			else if (Connection.CurrentTransaction != null)
+			else if (Connection.CurrentTransaction is object)
 			{
 				throw new InvalidOperationException("This is not the active transaction.");
 			}
@@ -37,8 +42,11 @@ namespace MySql.Data.MySqlClient
 		}
 
 		public override void Rollback() => RollbackAsync(IOBehavior.Synchronous, default).GetAwaiter().GetResult();
-		public Task RollbackAsync() => RollbackAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, default);
-		public Task RollbackAsync(CancellationToken cancellationToken) => RollbackAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		public Task RollbackAsync(CancellationToken cancellationToken = default) => RollbackAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#else
+		public override Task RollbackAsync(CancellationToken cancellationToken = default) => RollbackAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
+#endif
 
 		private async Task RollbackAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
@@ -53,7 +61,7 @@ namespace MySql.Data.MySqlClient
 				Connection.CurrentTransaction = null;
 				Connection = null;
 			}
-			else if (Connection.CurrentTransaction != null)
+			else if (Connection.CurrentTransaction is object)
 			{
 				throw new InvalidOperationException("This is not the active transaction.");
 			}
@@ -72,24 +80,49 @@ namespace MySql.Data.MySqlClient
 			try
 			{
 				if (disposing)
-				{
-					m_isDisposed = true;
-					if (Connection?.CurrentTransaction == this)
-					{
-						if (Connection.State == ConnectionState.Open && Connection.Session.IsConnected)
-						{
-							using (var cmd = new MySqlCommand("rollback", Connection, this))
-								cmd.ExecuteNonQuery();
-						}
-						Connection.CurrentTransaction = null;
-					}
-					Connection = null;
-				}
+						DisposeAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 			}
 			finally
 			{
 				base.Dispose(disposing);
 			}
+		}
+
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		public Task DisposeAsync() => DisposeAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, CancellationToken.None);
+#else
+		public override ValueTask DisposeAsync() => DisposeAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, CancellationToken.None);
+#endif
+
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		internal Task DisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#else
+		internal ValueTask DisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#endif
+		{
+			m_isDisposed = true;
+			if (Connection?.CurrentTransaction == this)
+				return DoDisposeAsync(ioBehavior, cancellationToken);
+			Connection = null;
+			return Utility.CompletedValueTask;
+		}
+
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		private async Task DoDisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#else
+		private async ValueTask DoDisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#endif
+		{
+			if (Connection?.CurrentTransaction == this)
+			{
+				if (Connection.State == ConnectionState.Open && Connection.Session.IsConnected)
+				{
+					using (var cmd = new MySqlCommand("rollback", Connection, this))
+						await cmd.ExecuteNonQueryAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+				}
+				Connection.CurrentTransaction = null;
+			}
+			Connection = null;
 		}
 
 		internal MySqlTransaction(MySqlConnection connection, IsolationLevel isolationLevel)

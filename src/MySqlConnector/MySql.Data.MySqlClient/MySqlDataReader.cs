@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -23,19 +24,19 @@ namespace MySql.Data.MySqlClient
 	{
 		public override bool NextResult()
 		{
-			Command?.ResetCommandTimeout();
+			Command?.CancellableCommand.ResetCommandTimeout();
 			return NextResultAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 		}
 
 		public override bool Read()
 		{
-			Command?.ResetCommandTimeout();
+			Command?.CancellableCommand.ResetCommandTimeout();
 			return GetResultSet().Read();
 		}
 
 		public override Task<bool> ReadAsync(CancellationToken cancellationToken)
 		{
-			Command?.ResetCommandTimeout();
+			Command?.CancellableCommand.ResetCommandTimeout();
 			return GetResultSet().ReadAsync(cancellationToken);
 		}
 
@@ -44,7 +45,7 @@ namespace MySql.Data.MySqlClient
 
 		public override Task<bool> NextResultAsync(CancellationToken cancellationToken)
 		{
-			Command?.ResetCommandTimeout();
+			Command?.CancellableCommand.ResetCommandTimeout();
 			return NextResultAsync(Command?.Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
 		}
 
@@ -53,22 +54,53 @@ namespace MySql.Data.MySqlClient
 			VerifyNotDisposed();
 			try
 			{
-				await m_resultSet.ReadEntireAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
-				var nextResult = await ScanResultSetAsync(ioBehavior, m_resultSet, cancellationToken).ConfigureAwait(false);
+				while (true)
+				{
+					await m_resultSet.ReadEntireAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+					await ScanResultSetAsync(ioBehavior, m_resultSet, cancellationToken).ConfigureAwait(false);
+					if (m_hasMoreResults && m_resultSet.ContainsCommandParameters)
+						await ReadOutParametersAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+					else
+						break;
+				}
 
-				if (nextResult != null)
-					ActivateResultSet(nextResult);
+				if (!m_hasMoreResults)
+				{
+					if (m_commandListPosition.CommandIndex < m_commandListPosition.Commands.Count)
+					{
+						Command = m_commandListPosition.Commands[m_commandListPosition.CommandIndex];
+						using (Command.CancellableCommand.RegisterCancel(cancellationToken))
+						{
+							var writer = new ByteBufferWriter();
+							if (!Command.Connection.Session.IsCancelingQuery && m_payloadCreator.WriteQueryCommand(ref m_commandListPosition, m_cachedProcedures, writer))
+							{
+								using (var payload = writer.ToPayloadData())
+								{
+									await Command.Connection.Session.SendAsync(payload, ioBehavior, cancellationToken).ConfigureAwait(false);
+									await m_resultSet.ReadResultSetHeaderAsync(ioBehavior).ConfigureAwait(false);
+									ActivateResultSet();
+									m_hasMoreResults = true;
+								}
+							}
+						}
+					}
+				}
+				else
+				{
+					ActivateResultSet();
+				}
 
-				m_resultSet = nextResult ?? new ResultSet(this);
+				if (!m_hasMoreResults)
+					m_resultSet.Reset();
 #if !NETSTANDARD1_3
 				m_schemaTable = null;
 #endif
-				return nextResult != null;
+				return m_hasMoreResults;
 			}
 			catch (MySqlException)
 			{
-				m_resultSet = new ResultSet(this);
-				m_resultSetBuffered = null;
+				m_resultSet.Reset();
+				m_hasMoreResults = false;
 #if !NETSTANDARD1_3
 				m_schemaTable = null;
 #endif
@@ -76,60 +108,57 @@ namespace MySql.Data.MySqlClient
 			}
 		}
 
-		private void ActivateResultSet(ResultSet resultSet)
+		private void ActivateResultSet()
 		{
-			if (resultSet.ReadResultSetHeaderException != null)
+			if (m_resultSet.ReadResultSetHeaderException is object)
 			{
-				var mySqlException = resultSet.ReadResultSetHeaderException as MySqlException;
+				var mySqlException = m_resultSet.ReadResultSetHeaderException as MySqlException;
 
 				// for any exception not created from an ErrorPayload, mark the session as failed (because we can't guarantee that all data
 				// has been read from the connection and that the socket is still usable)
 				if (mySqlException?.SqlState is null)
-					Command.Connection.SetSessionFailed(resultSet.ReadResultSetHeaderException);
+					Command.Connection.SetSessionFailed(m_resultSet.ReadResultSetHeaderException);
 
-				throw mySqlException != null ?
+				throw mySqlException is object ?
 					new MySqlException(mySqlException.Number, mySqlException.SqlState, mySqlException.Message, mySqlException) :
-					new MySqlException("Failed to read the result set.", resultSet.ReadResultSetHeaderException);
+					new MySqlException("Failed to read the result set.", m_resultSet.ReadResultSetHeaderException);
 			}
 
-			Command.LastInsertedId = resultSet.LastInsertId;
-			m_recordsAffected = m_recordsAffected is null ? resultSet.RecordsAffected : m_recordsAffected.Value + (resultSet.RecordsAffected ?? 0);
-			m_hasWarnings = resultSet.WarningCount != 0;
+			Command.SetLastInsertedId(m_resultSet.LastInsertId);
+			m_recordsAffected = m_recordsAffected is null ? m_resultSet.RecordsAffected : m_recordsAffected.Value + (m_resultSet.RecordsAffected ?? 0);
+			m_hasWarnings = m_resultSet.WarningCount != 0;
 		}
 
-		private ValueTask<ResultSet> ScanResultSetAsync(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
+		private ValueTask<int> ScanResultSetAsync(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
 		{
-			if (m_resultSetBuffered is null)
-				return new ValueTask<ResultSet>((ResultSet)null);
+			if (!m_hasMoreResults)
+				return default;
 
-			if (m_resultSetBuffered.BufferState == ResultSetState.NoMoreData || m_resultSetBuffered.BufferState == ResultSetState.None)
+			if (resultSet.BufferState == ResultSetState.NoMoreData || resultSet.BufferState == ResultSetState.None)
 			{
-				m_resultSetBuffered = null;
-				return new ValueTask<ResultSet>((ResultSet)null);
+				m_hasMoreResults = false;
+				return default;
 			}
 
-			if (m_resultSetBuffered.BufferState != ResultSetState.HasMoreData)
-				throw new InvalidOperationException("Invalid state: {0}".FormatInvariant(m_resultSetBuffered.State));
+			if (resultSet.BufferState != ResultSetState.HasMoreData)
+				throw new InvalidOperationException("Invalid state: {0}".FormatInvariant(resultSet.BufferState));
 
-			if (resultSet is null)
-				resultSet = new ResultSet(this);
-			return new ValueTask<ResultSet>(ScanResultSetAsyncAwaited(ioBehavior, resultSet, cancellationToken));
+			return new ValueTask<int>(ScanResultSetAsyncAwaited(ioBehavior, resultSet, cancellationToken));
 		}
 
-		private async Task<ResultSet> ScanResultSetAsyncAwaited(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
+		private async Task<int> ScanResultSetAsyncAwaited(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
 		{
-			using (Command.RegisterCancel(cancellationToken))
+			using (Command.CancellableCommand.RegisterCancel(cancellationToken))
 			{
 				try
 				{
-					m_resultSetBuffered = await resultSet.ReadResultSetHeaderAsync(ioBehavior).ConfigureAwait(false);
-					if (m_resultSetBuffered.BufferState == ResultSetState.NoMoreData)
-						m_resultSetBuffered = null;
-					return m_resultSetBuffered;
+					await resultSet.ReadResultSetHeaderAsync(ioBehavior).ConfigureAwait(false);
+					m_hasMoreResults = resultSet.BufferState != ResultSetState.NoMoreData;
+					return 0;
 				}
 				catch (MySqlException ex) when (ex.Number == (int) MySqlErrorCode.QueryInterrupted)
 				{
-					m_resultSetBuffered = null;
+					m_hasMoreResults = false;
 					cancellationToken.ThrowIfCancellationRequested();
 					throw;
 				}
@@ -206,6 +235,9 @@ namespace MySql.Data.MySqlClient
 		public MySqlDateTime GetMySqlDateTime(int ordinal) => GetResultSet().GetCurrentRow().GetMySqlDateTime(ordinal);
 		public MySqlDateTime GetMySqlDateTime(string name) => GetMySqlDateTime(GetOrdinal(name));
 
+		public MySqlGeometry GetMySqlGeometry(int ordinal) => GetResultSet().GetCurrentRow().GetMySqlGeometry(ordinal);
+		public MySqlGeometry GetMySqlGeometry(string name) => GetMySqlGeometry(GetOrdinal(name));
+
 		public TimeSpan GetTimeSpan(int ordinal) => (TimeSpan) GetValue(ordinal);
 		public TimeSpan GetTimeSpan(string name) => GetTimeSpan(GetOrdinal(name));
 
@@ -246,10 +278,7 @@ namespace MySql.Data.MySqlClient
 			return m_schemaTable;
 		}
 
-		public override void Close()
-		{
-			DoClose();
-		}
+		public override void Close() => DisposeAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 #endif
 
 		public ReadOnlyCollection<DbColumn> GetColumnSchema()
@@ -270,6 +299,8 @@ namespace MySql.Data.MySqlClient
 				return (T) (object) GetTextReader(ordinal);
 			if (typeof(T) == typeof(Stream))
 				return (T) (object) GetStream(ordinal);
+			if (typeof(T) == typeof(MySqlGeometry))
+				return (T) (object) GetMySqlGeometry(ordinal);
 
 			return base.GetFieldValue<T>(ordinal);
 		}
@@ -279,7 +310,7 @@ namespace MySql.Data.MySqlClient
 			try
 			{
 				if (disposing)
-					DoClose();
+					DisposeAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult();
 			}
 			finally
 			{
@@ -287,19 +318,35 @@ namespace MySql.Data.MySqlClient
 			}
 		}
 
-		internal MySqlCommand Command { get; private set; }
-		internal ResultSetProtocol ResultSetProtocol { get; }
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		public Task DisposeAsync() => DisposeAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, CancellationToken.None);
+#else
+		public override ValueTask DisposeAsync() => DisposeAsync(Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, CancellationToken.None);
+#endif
+
+		internal IMySqlCommand Command { get; private set; }
 		internal MySqlConnection Connection => Command?.Connection;
 		internal ServerSession Session => Command?.Connection.Session;
 
-		internal static async Task<MySqlDataReader> CreateAsync(MySqlCommand command, CommandBehavior behavior, ResultSetProtocol resultSetProtocol, IOBehavior ioBehavior)
+		internal static async Task<MySqlDataReader> CreateAsync(CommandListPosition commandListPosition, ICommandPayloadCreator payloadCreator, IDictionary<string, CachedProcedure> cachedProcedures, IMySqlCommand command, CommandBehavior behavior, IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
-			var dataReader = new MySqlDataReader(command, resultSetProtocol, behavior);
+			var dataReader = new MySqlDataReader(commandListPosition, payloadCreator, cachedProcedures, command, behavior);
 			command.Connection.SetActiveReader(dataReader);
 
 			try
 			{
-				await dataReader.ReadFirstResultSetAsync(ioBehavior).ConfigureAwait(false);
+				await dataReader.m_resultSet.ReadResultSetHeaderAsync(ioBehavior).ConfigureAwait(false);
+				dataReader.ActivateResultSet();
+				dataReader.m_hasMoreResults = true;
+
+				if (dataReader.m_resultSet.ContainsCommandParameters)
+					await dataReader.ReadOutParametersAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+
+				// if the command list has multiple commands, keep reading until a result set is found
+				while (dataReader.m_resultSet.State == ResultSetState.NoMoreData && commandListPosition.CommandIndex < commandListPosition.Commands.Count)
+				{
+					await dataReader.NextResultAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+				}
 			}
 			catch (Exception)
 			{
@@ -310,19 +357,12 @@ namespace MySql.Data.MySqlClient
 			return dataReader;
 		}
 
-		internal async Task ReadFirstResultSetAsync(IOBehavior ioBehavior)
-		{
-			m_resultSet = await new ResultSet(this).ReadResultSetHeaderAsync(ioBehavior).ConfigureAwait(false);
-			ActivateResultSet(m_resultSet);
-			m_resultSetBuffered = m_resultSet;
-		}
-
 #if !NETSTANDARD1_3
 		internal DataTable BuildSchemaTable()
 		{
 			var colDefinitions = GetResultSet().ColumnDefinitions;
 			if (colDefinitions is null)
-				return null;
+				throw new InvalidOperationException("There is no current result set.");
 			DataTable schemaTable = new DataTable("SchemaTable");
 			schemaTable.Locale = CultureInfo.InvariantCulture;
 			schemaTable.MinimumCapacity = colDefinitions.Length;
@@ -410,25 +450,32 @@ namespace MySql.Data.MySqlClient
 		}
 #endif
 
-		private MySqlDataReader(MySqlCommand command, ResultSetProtocol resultSetProtocol, CommandBehavior behavior)
+		private MySqlDataReader(CommandListPosition commandListPosition, ICommandPayloadCreator payloadCreator, IDictionary<string, CachedProcedure> cachedProcedures, IMySqlCommand command, CommandBehavior behavior)
 		{
+			m_commandListPosition = commandListPosition;
+			m_payloadCreator = payloadCreator;
+			m_cachedProcedures = cachedProcedures;
 			Command = command;
-			ResultSetProtocol = resultSetProtocol;
 			m_behavior = behavior;
+			m_resultSet = new ResultSet(this);
 		}
 
-		private void DoClose()
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		internal async Task DisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#else
+		internal async ValueTask DisposeAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+#endif
 		{
 			if (!m_closed)
 			{
 				m_closed = true;
 
-				if (m_resultSet != null && Command.Connection.State == ConnectionState.Open)
+				if (m_resultSet is object && Command.Connection.State == ConnectionState.Open)
 				{
 					Command.Connection.Session.SetTimeout(Constants.InfiniteTimeout);
 					try
 					{
-						while (NextResultAsync(IOBehavior.Synchronous, CancellationToken.None).GetAwaiter().GetResult())
+						while (await NextResultAsync(ioBehavior, cancellationToken).ConfigureAwait(false))
 						{
 						}
 					}
@@ -439,19 +486,48 @@ namespace MySql.Data.MySqlClient
 					m_resultSet = null;
 				}
 
-				m_resultSetBuffered = null;
+				m_hasMoreResults = false;
 
 				var connection = Command.Connection;
 				connection.FinishQuerying(m_hasWarnings);
 
-				Command.ReaderClosed();
 				if ((m_behavior & CommandBehavior.CloseConnection) != 0)
 				{
-					Command.Dispose();
-					connection.Close();
+					(Command as IDisposable)?.Dispose();
+					await connection.CloseAsync(ioBehavior).ConfigureAwait(false);
 				}
 				Command = null;
 			}
+		}
+
+		// If ResultSet.ContainsCommandParameters is true, then this method should be called to read the (single)
+		// row in that result set, which contains the values of "out" parameters from the previous stored procedure
+		// execution. These values will be stored in the parameters of the associated command.
+		private async Task ReadOutParametersAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
+		{
+			await ReadAsync(ioBehavior, cancellationToken).ConfigureAwait(false);
+
+			if (GetString(0) != SingleCommandPayloadCreator.OutParameterSentinelColumnName)
+				throw new InvalidOperationException("Expected out parameter values.");
+
+			for (var i = 0; i < Command.OutParameters.Count; i++)
+			{
+				var param = Command.OutParameters[i];
+				var columnIndex = i + 1;
+				if (param.HasSetDbType && !IsDBNull(columnIndex))
+				{
+					var dbTypeMapping = TypeMapper.Instance.GetDbTypeMapping(param.DbType);
+					if (dbTypeMapping is object)
+					{
+						param.Value = dbTypeMapping.DoConversion(GetValue(columnIndex));
+						continue;
+					}
+				}
+				param.Value = GetValue(columnIndex);
+			}
+
+			if (await ReadAsync(ioBehavior, cancellationToken).ConfigureAwait(false))
+				throw new InvalidOperationException("Expected only one row.");
 		}
 
 		private void VerifyNotDisposed()
@@ -467,11 +543,14 @@ namespace MySql.Data.MySqlClient
 		}
 
 		readonly CommandBehavior m_behavior;
+		readonly ICommandPayloadCreator m_payloadCreator;
+		readonly IDictionary<string, CachedProcedure> m_cachedProcedures;
+		CommandListPosition m_commandListPosition;
 		bool m_closed;
 		int? m_recordsAffected;
 		bool m_hasWarnings;
 		ResultSet m_resultSet;
-		ResultSet m_resultSetBuffered;
+		bool m_hasMoreResults;
 #if !NETSTANDARD1_3
 		DataTable m_schemaTable;
 #endif

@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -14,17 +15,17 @@ namespace MySqlConnector.Utilities
 {
 	internal static class Utility
 	{
-		public static void Dispose<T>(ref T disposable)
+		public static void Dispose<T>(ref T? disposable)
 			where T : class, IDisposable
 		{
-			if (disposable != null)
+			if (disposable is object)
 			{
 				disposable.Dispose();
 				disposable = null;
 			}
 		}
 
-		public static string FormatInvariant(this string format, params object[] args) =>
+		public static string FormatInvariant(this string format, params object?[] args) =>
 			string.Format(CultureInfo.InvariantCulture, format, args);
 
 #if NET45 || NET461 || NET471 || NETSTANDARD1_3 || NETSTANDARD2_0
@@ -61,7 +62,7 @@ namespace MySqlConnector.Utilities
 			{
 				// MemoryMarshal.GetNonNullPinnableReference is internal, so fake it by using an invalid but non-null pointer; this
 				// prevents Convert from throwing an exception when the output buffer is empty
-				encoder.Convert(charsPtr, chars.Length, bytesPtr == null ? (byte*) 1 : bytesPtr, bytes.Length, flush, out charsUsed, out bytesUsed, out completed);
+				encoder.Convert(charsPtr, chars.Length, bytesPtr is null ? (byte*) 1 : bytesPtr, bytes.Length, flush, out charsUsed, out bytesUsed, out completed);
 			}
 		}
 #endif
@@ -201,7 +202,7 @@ namespace MySqlConnector.Utilities
 		/// <param name="index">The non-negative, zero-based starting index of the new slice (relative to <see cref="ArraySegment{T}.Offset"/> of <paramref name="arraySegment"/>.</param>
 		/// <returns>A new <see cref="ArraySegment{T}"/> starting at the <paramref name="index"/>th element of <paramref name="arraySegment"/> and continuing to the end of <paramref name="arraySegment"/>.</returns>
 		public static ArraySegment<T> Slice<T>(this ArraySegment<T> arraySegment, int index) =>
-			new ArraySegment<T>(arraySegment.Array, arraySegment.Offset + index, arraySegment.Count - index);
+			new ArraySegment<T>(arraySegment.Array!, arraySegment.Offset + index, arraySegment.Count - index);
 
 		/// <summary>
 		/// Returns a new <see cref="ArraySegment{T}"/> that starts at index <paramref name="index"/> into <paramref name="arraySegment"/> and has a length of <paramref name="length"/>.
@@ -211,7 +212,7 @@ namespace MySqlConnector.Utilities
 		/// <param name="length">The non-negative length of the new slice.</param>
 		/// <returns>A new <see cref="ArraySegment{T}"/> of length <paramref name="length"/>, starting at the <paramref name="index"/>th element of <paramref name="arraySegment"/>.</returns>
 		public static ArraySegment<T> Slice<T>(this ArraySegment<T> arraySegment, int index, int length) =>
-			new ArraySegment<T>(arraySegment.Array, arraySegment.Offset + index, length);
+			new ArraySegment<T>(arraySegment.Array!, arraySegment.Offset + index, length);
 
 		/// <summary>
 		/// Returns a new <see cref="byte[]"/> that is a slice of <paramref name="input"/> starting at <paramref name="offset"/>.
@@ -256,7 +257,8 @@ namespace MySqlConnector.Utilities
 		/// Resizes <paramref name="resizableArray"/> to hold at least <paramref name="newLength"/> items.
 		/// </summary>
 		/// <remarks><paramref name="resizableArray"/> may be <c>null</c>, in which case a new <see cref="ResizableArray{T}"/> will be allocated.</remarks>
-		public static void Resize<T>(ref ResizableArray<T> resizableArray, int newLength)
+		public static void Resize<T>([NotNull] ref ResizableArray<T>? resizableArray, int newLength)
+			where T : notnull
 		{
 			if (resizableArray is null)
 				resizableArray = new ResizableArray<T>();
@@ -330,13 +332,13 @@ namespace MySqlConnector.Utilities
 				if (s_completedTask is null)
 				{
 					var tcs = new TaskCompletionSource<object>();
-					tcs.SetResult(null);
+					tcs.SetResult(tcs);
 					s_completedTask = tcs.Task;
 				}
 				return s_completedTask;
 			}
 		}
-		static Task s_completedTask;
+		static Task? s_completedTask;
 
 		public static Task TaskFromException(Exception exception) => TaskFromException<object>(exception);
 		public static Task<T> TaskFromException<T>(Exception exception)
@@ -345,10 +347,19 @@ namespace MySqlConnector.Utilities
 			tcs.SetException(exception);
 			return tcs.Task;
 		}
+
+		public static byte[] EmptyByteArray { get; } = new byte[0];
 #else
 		public static Task CompletedTask => Task.CompletedTask;
 		public static Task TaskFromException(Exception exception) => Task.FromException(exception);
 		public static Task<T> TaskFromException<T>(Exception exception) => Task.FromException<T>(exception);
+		public static byte[] EmptyByteArray { get; } = Array.Empty<byte>();
+#endif
+
+#if !NETSTANDARD2_1 && !NETCOREAPP3_0
+		public static Task CompletedValueTask => CompletedTask;
+#else
+		public static ValueTask CompletedValueTask => default;
 #endif
 
 		public static byte[] TrimZeroByte(byte[] value)
@@ -385,7 +396,7 @@ namespace MySqlConnector.Utilities
 #if NET45 || NET461
 		public static bool IsWindows() => Environment.OSVersion.Platform == PlatformID.Win32NT;
 
-		public static void GetOSDetails(out string os, out string osDescription, out string architecture)
+		public static void GetOSDetails(out string? os, out string osDescription, out string architecture)
 		{
 			os = Environment.OSVersion.Platform == PlatformID.Win32NT ? "Windows" :
 				Environment.OSVersion.Platform == PlatformID.Unix ? "Linux" :
@@ -407,7 +418,7 @@ namespace MySqlConnector.Utilities
 			}
 		}
 
-		public static void GetOSDetails(out string os, out string osDescription, out string architecture)
+		public static void GetOSDetails(out string? os, out string osDescription, out string architecture)
 		{
 			os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows" :
 				RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "Linux" :

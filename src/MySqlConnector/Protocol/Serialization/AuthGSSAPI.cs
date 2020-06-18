@@ -1,8 +1,8 @@
+#nullable disable
 using System;
 using System.IO;
 using System.Net;
 using System.Net.Security;
-using System.Security;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
@@ -46,7 +46,7 @@ namespace MySqlConnector.Protocol.Serialization
 		IOBehavior m_ioBehavior;
 		CancellationToken m_cancellationToken;
 
-		public PayloadData MySQLProtocolPayload { get; private set; }
+		public PayloadData? MySQLProtocolPayload { get; private set; }
 		public NegotiateToMySqlConverterStream(ServerSession serverSession, IOBehavior ioBehavior, CancellationToken cancellationToken)
 		{
 			m_serverSession = serverSession;
@@ -82,31 +82,27 @@ namespace MySqlConnector.Protocol.Serialization
 				}
 				// Read and cache packet from server.
 				var payload = await m_serverSession.ReceiveReplyAsync(m_ioBehavior, cancellationToken).ConfigureAwait(false);
-				var segment = payload.ArraySegment;
+				var payloadMemory = payload.Memory;
 
-				if (segment.Count > NegotiateStreamConstants.MaxPayloadLength)
-					throw new InvalidDataException(String.Format("Payload too big for NegotiateStream - {0} bytes", segment.Count));
+				if (payloadMemory.Length > NegotiateStreamConstants.MaxPayloadLength)
+					throw new InvalidDataException(String.Format("Payload too big for NegotiateStream - {0} bytes", payloadMemory.Length));
 
 				// Check the first byte of the incoming packet.
 				// It can be an OK packet indicating end of server processing,
 				// or it can be 0x01 prefix we must strip off - 0x01 server masks special bytes, e.g 0xff, 0xfe in the payload
 				// during pluggable authentication packet exchanges.
-				var segmentOffset = segment.Offset;
-				var segmentCount = segment.Count;
-
-				switch (segment.Array[segment.Offset])
+				switch (payloadMemory.Span[0])
 				{
 				case 0x0:
 					MySQLProtocolPayload = payload;
 					CreateNegotiateStreamMessageHeader(buffer, offset, NegotiateStreamConstants.HandshakeDone, 0);
 					return NegotiateStreamConstants.HeaderLength;
 				case 0x1:
-					segmentOffset++;
-					segmentCount--;
+					payloadMemory = payloadMemory.Slice(1);
 					break;
 				}
 
-				m_readBuffer = new MemoryStream(segment.Array, segmentOffset, segmentCount);
+				m_readBuffer = new MemoryStream(payloadMemory.ToArray());
 				CreateNegotiateStreamMessageHeader(buffer, offset, NegotiateStreamConstants.HandshakeInProgress, m_readBuffer.Length);
 				bytesRead = NegotiateStreamConstants.HeaderLength;
 				offset += bytesRead;
@@ -237,16 +233,16 @@ namespace MySqlConnector.Protocol.Serialization
 					await negotiateStream.AuthenticateAsClientAsync(CredentialCache.DefaultNetworkCredentials, targetName).ConfigureAwait(false);
 				}
 #endif
-				if (cs.ServerSPN != null && !negotiateStream.IsMutuallyAuthenticated)
+				if (cs.ServerSPN is object && !negotiateStream.IsMutuallyAuthenticated)
 				{
 					// Negotiate used NTLM fallback, server name cannot be verified.
 					throw new AuthenticationException(String.Format(
 						"GSSAPI : Unable to verify server principal name using authentication type {0}",
 						negotiateStream.RemoteIdentity?.AuthenticationType));
 				}
-				if (innerStream.MySQLProtocolPayload.ArraySegment.Array != null)
+				if (innerStream.MySQLProtocolPayload is PayloadData payload)
 					// return already pre-read OK packet.
-					return innerStream.MySQLProtocolPayload;
+					return payload;
 
 				// Read final OK packet from server
 				return await session.ReceiveReplyAsync(ioBehavior, cancellationToken).ConfigureAwait(false);

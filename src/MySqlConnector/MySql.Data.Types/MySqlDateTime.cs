@@ -48,14 +48,14 @@ namespace MySql.Data.Types
 		}
 
 		public DateTime GetDateTime() =>
-			!IsValidDateTime ? throw new MySqlConversionException("Cannot convert MySqlDateTime to DateTime when IsValidDateTime is false.") : 
+			!IsValidDateTime ? throw new MySqlConversionException("Cannot convert MySqlDateTime to DateTime when IsValidDateTime is false.") :
 				new DateTime(Year, Month, Day, Hour, Minute, Second, DateTimeKind.Unspecified).AddTicks(Microsecond * 10);
 
 		public override string ToString() => IsValidDateTime ? GetDateTime().ToString() : "0000-00-00";
 
 		public static explicit operator DateTime(MySqlDateTime val) => !val.IsValidDateTime ? DateTime.MinValue : val.GetDateTime();
 
-		int IComparable.CompareTo(object obj)
+		int IComparable.CompareTo(object? obj)
 		{
 			if (!(obj is MySqlDateTime other))
 				throw new ArgumentException("CompareTo can only be called with another MySqlDateTime", nameof(obj));

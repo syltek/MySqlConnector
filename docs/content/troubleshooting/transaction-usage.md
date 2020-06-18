@@ -1,14 +1,21 @@
 ---
-lastmod: 2018-09-29
+lastmod: 2019-07-30
 date: 2018-09-29
 title: Transaction Usage
+customtitle: "Fix: The transaction associated with this command is not the connection’s active transaction"
 weight: 20
 menu:
   main:
     parent: troubleshooting
 ---
 
-# Transaction Usage
+# The transaction associated with this command is not the connection’s active transaction
+
+## Problem
+
+When using `MySqlTransaction` from a C# program, you may receive the following error:
+
+* **System.InvalidOperationException: The transaction associated with this command is not the connection's active transaction; see https://fl.vu/mysql-trans**
 
 By default, MySqlConnector requires `MySqlCommand.Transaction` to be set to the connection's active transaction in order for the command to be executed successfully. This strictness is intended to catch programming bugs related to using the wrong transaction, a disposed transaction, or forgetting to set the transaction (and using the default value `null`).
 
