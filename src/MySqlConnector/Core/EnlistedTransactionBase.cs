@@ -18,7 +18,7 @@ namespace MySqlConnector.Core
 		public void Start()
 		{
 			OnStart();
-			Transaction.EnlistVolatile(this, EnlistmentOptions.None);
+			Transaction!.EnlistVolatile(this, EnlistmentOptions.None);
 		}
 
 		void IEnlistmentNotification.Prepare(PreparingEnlistment enlistment)
@@ -32,7 +32,6 @@ namespace MySqlConnector.Core
 			OnCommit(enlistment);
 			enlistment.Done();
 			Connection.UnenlistTransaction();
-			Transaction = null;
 		}
 
 		void IEnlistmentNotification.Rollback(Enlistment enlistment)
@@ -40,7 +39,6 @@ namespace MySqlConnector.Core
 			OnRollback(enlistment);
 			enlistment.Done();
 			Connection.UnenlistTransaction();
-			Transaction = null;
 		}
 
 		public void InDoubt(Enlistment enlistment) => throw new NotImplementedException();

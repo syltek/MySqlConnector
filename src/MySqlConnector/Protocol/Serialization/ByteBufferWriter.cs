@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -40,8 +41,14 @@ namespace MySqlConnector.Protocol.Serialization
 
 		public void Advance(int count)
 		{
-			Debug.Assert(count <= m_output.Length, "length <= m_output.Length");
+			Debug.Assert(count <= m_output.Length, "count <= m_output.Length");
 			m_output = m_output.Slice(count);
+		}
+
+		public void TrimEnd(int byteCount)
+		{
+			Debug.Assert(byteCount <= m_output.Length, "byteCount <= m_output.Length");
+			m_output = m_buffer.AsMemory().Slice(Position - byteCount);
 		}
 
 		public void Write(byte value)
@@ -97,7 +104,7 @@ namespace MySqlConnector.Protocol.Serialization
 #if NET45 || NETSTANDARD1_3
 		public void Write(string value)
 		{
-			Debug.Assert(value != null, "value != null");
+			Debug.Assert(value is object, "value is object");
 			if (value.Length == 0)
 				return;
 
@@ -113,7 +120,7 @@ namespace MySqlConnector.Protocol.Serialization
 			if (length == 0)
 				return;
 
-			Debug.Assert(value != null, "value != null");
+			Debug.Assert(value is object, "value is object");
 			fixed (char* charsPtr = value)
 			{
 				var byteCount = Encoding.UTF8.GetByteCount(charsPtr + offset, length);
@@ -210,7 +217,7 @@ namespace MySqlConnector.Protocol.Serialization
 		Memory<byte> m_output;
 	}
 
-	internal static class Utf8WriterExtensions
+	internal static class ByteBufferWriterExtensions
 	{
 		public static void WriteLengthEncodedInteger(this ByteBufferWriter writer, ulong value)
 		{

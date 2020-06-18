@@ -4,7 +4,7 @@ namespace MySqlConnector.Protocol.Payloads
 {
 	internal static class ChangeUserPayload
 	{
-		public static PayloadData Create(string user, byte[] authResponse, string schemaName, CharacterSet characterSet, byte[] connectionAttributes)
+		public static PayloadData Create(string user, byte[] authResponse, string? schemaName, CharacterSet characterSet, byte[]? connectionAttributes)
 		{
 			var writer = new ByteBufferWriter();
 
@@ -16,7 +16,7 @@ namespace MySqlConnector.Protocol.Payloads
 			writer.Write((byte) characterSet);
 			writer.Write((byte) 0);
 			writer.WriteNullTerminatedString("mysql_native_password");
-			if (connectionAttributes != null)
+			if (connectionAttributes is object)
 				writer.Write(connectionAttributes);
 
 			return writer.ToPayloadData();

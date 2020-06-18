@@ -27,7 +27,7 @@ namespace MySqlConnector.Logging
 
 			public bool IsEnabled(MySqlConnectorLogLevel level) => level >= m_provider.m_minimumLevel && level <= MySqlConnectorLogLevel.Fatal;
 
-			public void Log(MySqlConnectorLogLevel level, string message, object[] args = null, Exception exception = null)
+			public void Log(MySqlConnectorLogLevel level, string message, object?[]? args = null, Exception? exception = null)
 			{
 				if (!IsEnabled(level))
 					return;
@@ -44,7 +44,7 @@ namespace MySqlConnector.Logging
 					sb.AppendFormat(CultureInfo.InvariantCulture, message, args);
 				sb.AppendLine();
 
-				if (exception != null)
+				if (exception is object)
 					sb.AppendLine(exception.ToString());
 
 				if (m_provider.m_isColored)

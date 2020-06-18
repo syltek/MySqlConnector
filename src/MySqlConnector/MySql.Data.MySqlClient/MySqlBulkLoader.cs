@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -86,7 +87,7 @@ namespace MySql.Data.MySqlClient
 
 			sqlCommandMain.AppendFormat("INTO TABLE {0} ", TableName);
 
-			if (CharacterSet != null)
+			if (CharacterSet is object)
 				sqlCommandMain.AppendFormat("CHARACTER SET {0} ", CharacterSet);
 
 			StringBuilder sqlCommandFragment = new StringBuilder();
@@ -148,7 +149,7 @@ namespace MySql.Data.MySqlClient
 			if (Connection is null)
 				throw new InvalidOperationException("Connection not set");
 
-			if (!string.IsNullOrWhiteSpace(FileName) && SourceStream != null)
+			if (!string.IsNullOrWhiteSpace(FileName) && SourceStream is object)
 				throw new InvalidOperationException("Cannot set both FileName and SourceStream");
 
 			// LOCAL INFILE case
@@ -158,7 +159,7 @@ namespace MySql.Data.MySqlClient
 				FileName = null;
 			}
 
-			if (string.IsNullOrWhiteSpace(FileName) && SourceStream != null)
+			if (string.IsNullOrWhiteSpace(FileName) && SourceStream is object)
 			{
 				if (!Local)
 					throw new InvalidOperationException("Cannot use SourceStream when Local is not true.");

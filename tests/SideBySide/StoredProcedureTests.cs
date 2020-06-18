@@ -118,6 +118,30 @@ namespace SideBySide
 		}
 
 		[Fact]
+		public async Task StoredProcedureNoResultSet()
+		{
+			using (var cmd = m_database.Connection.CreateCommand())
+			{
+				cmd.CommandText = "out_string";
+				cmd.CommandType = CommandType.StoredProcedure;
+				cmd.Parameters.Add(new MySqlParameter
+				{
+					ParameterName = "@value",
+					DbType = DbType.String,
+					Direction = ParameterDirection.Output,
+				});
+
+				using (var reader = await cmd.ExecuteReaderAsync())
+				{
+					Assert.False(await reader.ReadAsync());
+					Assert.False(await reader.NextResultAsync());
+				}
+
+				Assert.Equal("test value", cmd.Parameters[0].Value);
+			}
+		}
+
+		[Fact]
 		public async Task StoredProcedureOutIncorrectType()
 		{
 			using (var cmd = m_database.Connection.CreateCommand())
@@ -415,7 +439,6 @@ namespace SideBySide
 					cmd.CommandText = "number_lister";
 					cmd.CommandType = CommandType.StoredProcedure;
 					cmd.Parameters.Add(parameter);
-					cmd.Prepare();
 					using (var reader = await cmd.ExecuteReaderAsync())
 					{
 						for (var i = 0; i < (int) parameter.Value; i++)
@@ -564,6 +587,22 @@ namespace SideBySide
 			{
 				command.CommandType = CommandType.StoredProcedure;
 				Assert.Throws<MySqlException>(() => command.ExecuteNonQuery());
+			}
+		}
+
+		[Fact]
+		public void OutputTimeParameter()
+		{
+			using (var command = new MySqlCommand("GetTime", m_database.Connection))
+			{
+				command.CommandType = CommandType.StoredProcedure;
+				var parameter = command.CreateParameter();
+				parameter.ParameterName = "OutTime";
+				parameter.Direction = ParameterDirection.Output;
+				command.Parameters.Add(parameter);
+
+				command.ExecuteNonQuery();
+				Assert.IsType<TimeSpan>(parameter.Value);
 			}
 		}
 

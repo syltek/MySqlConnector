@@ -3,6 +3,7 @@ using System.Buffers.Text;
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using MySql.Data.Types;
 using MySqlConnector.Core;
 using MySqlConnector.Protocol.Serialization;
@@ -16,45 +17,46 @@ namespace MySql.Data.MySqlClient
 #endif
 	{
 		public MySqlParameter()
+			: this(default(string?), default(object?))
 		{
-			ParameterName = "";
-			SourceColumn = "";
+		}
+
+		public MySqlParameter(string? name, object? value)
+		{
+			ResetDbType();
+			m_name = name ?? "";
+			NormalizedParameterName = NormalizeParameterName(m_name);
+			Value = value;
+			m_sourceColumn = "";
 #if !NETSTANDARD1_3
 			SourceVersion = DataRowVersion.Current;
 #endif
-			ResetDbType();
 		}
 
-		public MySqlParameter(string name, object objValue)
-			: this()
-		{
-			ParameterName = name;
-			Value = objValue;
-		}
-
-		public MySqlParameter(string name, MySqlDbType mySqlDbType)
+		public MySqlParameter(string? name, MySqlDbType mySqlDbType)
 			: this(name, mySqlDbType, 0)
 		{
 		}
 
-		public MySqlParameter(string name, MySqlDbType mySqlDbType, int size)
-			: this(name, mySqlDbType, size, "")
+		public MySqlParameter(string? name, MySqlDbType mySqlDbType, int size)
+			: this(name, mySqlDbType, size, null)
 		{
 		}
 
-		public MySqlParameter(string name, MySqlDbType mySqlDbType, int size, string sourceColumn)
+		public MySqlParameter(string? name, MySqlDbType mySqlDbType, int size, string? sourceColumn)
 		{
-			ParameterName = name;
+			m_name = name ?? "";
+			NormalizedParameterName = NormalizeParameterName(m_name);
 			MySqlDbType = mySqlDbType;
 			Size = size;
-			SourceColumn = sourceColumn;
+			m_sourceColumn = sourceColumn ?? "";
 #if !NETSTANDARD1_3
 			SourceVersion = DataRowVersion.Current;
 #endif
 		}
 
 #if !NETSTANDARD1_3
-		public MySqlParameter(string name, MySqlDbType mySqlDbType, int size, ParameterDirection direction, bool isNullable, byte precision, byte scale, string sourceColumn, DataRowVersion sourceVersion, object value)
+		public MySqlParameter(string? name, MySqlDbType mySqlDbType, int size, ParameterDirection direction, bool isNullable, byte precision, byte scale, string? sourceColumn, DataRowVersion sourceVersion, object value)
 			: this(name, mySqlDbType, size, sourceColumn)
 		{
 			Direction = direction;
@@ -112,19 +114,25 @@ namespace MySql.Data.MySqlClient
 		public override byte Scale { get; set; }
 #endif
 
-		public override string ParameterName
+		[NotNull]
+		public override string? ParameterName
 		{
 			get => m_name;
 			set
 			{
-				m_name = value;
-				NormalizedParameterName = value is null ? null : NormalizeParameterName(m_name);
+				m_name = value ?? "";
+				NormalizedParameterName = value is null ? "" : NormalizeParameterName(m_name);
 			}
 		}
 
 		public override int Size { get; set; }
 
-		public override string SourceColumn { get; set; }
+		[NotNull]
+		public override string? SourceColumn
+		{
+			get => m_sourceColumn;
+			set => m_sourceColumn = value ?? "";
+		}
 
 		public override bool SourceColumnNullMapping { get; set; }
 
@@ -132,16 +140,16 @@ namespace MySql.Data.MySqlClient
 		public override DataRowVersion SourceVersion { get; set; }
 #endif
 
-		public override object Value
+		public override object? Value
 		{
 			get => m_value;
 			set
 			{
 				m_value = value;
-				if (!HasSetDbType && value != null)
+				if (!HasSetDbType && value is object)
 				{
 					var typeMapping = TypeMapper.Instance.GetDbTypeMapping(value.GetType());
-					if (typeMapping != null)
+					if (typeMapping is object)
 					{
 						m_dbType = typeMapping.DbTypes[0];
 						m_mySqlDbType = TypeMapper.Instance.GetMySqlDbTypeForDbType(m_dbType);
@@ -178,7 +186,7 @@ namespace MySql.Data.MySqlClient
 			m_value = other.m_value;
 			Precision = other.Precision;
 			Scale = other.Scale;
-			SourceColumn = other.SourceColumn;
+			m_sourceColumn = other.m_sourceColumn;
 			SourceColumnNullMapping = other.SourceColumnNullMapping;
 #if !NETSTANDARD1_3
 			SourceVersion = other.SourceVersion;
@@ -254,11 +262,12 @@ namespace MySql.Data.MySqlClient
 			{
 				writer.WriteString(ulongValue);
 			}
-			else if (Value is byte[] || Value is ReadOnlyMemory<byte> || Value is Memory<byte> || Value is ArraySegment<byte>)
+			else if (Value is byte[] || Value is ReadOnlyMemory<byte> || Value is Memory<byte> || Value is ArraySegment<byte> || Value is MySqlGeometry)
 			{
 				var inputSpan = Value is byte[] byteArray ? byteArray.AsSpan() :
 					Value is ArraySegment<byte> arraySegment ? arraySegment.AsSpan() :
 					Value is Memory<byte> memory ? memory.Span :
+					Value is MySqlGeometry geometry ? geometry.Value :
 					((ReadOnlyMemory<byte>) Value).Span;
 
 				// determine the number of bytes to be written
@@ -475,6 +484,11 @@ namespace MySql.Data.MySqlClient
 				writer.WriteLengthEncodedInteger(unchecked((ulong) arraySegmentValue.Count));
 				writer.Write(arraySegmentValue);
 			}
+			else if (Value is MySqlGeometry geometry)
+			{
+				writer.WriteLengthEncodedInteger(unchecked((ulong) geometry.Value.Length));
+				writer.Write(geometry.Value);
+			}
 			else if (Value is float floatValue)
 			{
 				writer.Write(BitConverter.GetBytes(floatValue));
@@ -660,6 +674,7 @@ namespace MySql.Data.MySqlClient
 		MySqlDbType m_mySqlDbType;
 		string m_name;
 		ParameterDirection? m_direction;
-		object m_value;
+		string m_sourceColumn;
+		object? m_value;
 	}
 }

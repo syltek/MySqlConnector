@@ -5,7 +5,6 @@ namespace MySql.Data.MySqlClient
 	public sealed class MySqlClientFactory : DbProviderFactory
 	{
 		public static readonly MySqlClientFactory Instance = new MySqlClientFactory();
-		public static readonly string InvariantName = "MySqlConnector";
 
 		public override DbCommand CreateCommand() => new MySqlCommand();
 		public override DbConnection CreateConnection() => new MySqlConnection();
@@ -17,9 +16,9 @@ namespace MySql.Data.MySqlClient
 		public override DbDataAdapter CreateDataAdapter() => new MySqlDataAdapter();
 #endif
 
-#if !NETSTANDARD1_3 && !NETSTANDARD2_0 && !NET45 && !NET461 && !NET471
-		public static void Register() => DbProviderFactories.RegisterFactory(InvariantName, Instance);
-#endif
+		public MySqlBatch CreateBatch() => new MySqlBatch();
+		public MySqlBatchCommand CreateBatchCommand() => new MySqlBatchCommand();
+		public bool CanCreateBatch => true;
 
 		private MySqlClientFactory()
 		{

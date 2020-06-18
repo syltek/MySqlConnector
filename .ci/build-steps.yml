@@ -1,11 +1,27 @@
 steps:
+- task: CacheBeta@0
+  inputs:
+    key: |
+      $(Agent.OS)
+      $(Build.SourcesDirectory)/src/MySqlConnector/MySqlConnector.csproj
+      $(Build.SourcesDirectory)/src/MySqlConnector.Authentication.Ed25519/MySqlConnector.Authentication.Ed25519.csproj
+      $(Build.SourcesDirectory)/src/MySqlConnector.Logging.log4net/MySqlConnector.Logging.log4net.csproj
+      $(Build.SourcesDirectory)/src/MySqlConnector.Logging.Microsoft.Extensions.Logging/MySqlConnector.Logging.Microsoft.Extensions.Logging.csproj
+      $(Build.SourcesDirectory)/src/MySqlConnector.Logging.NLog/MySqlConnector.Logging.NLog.csproj
+      $(Build.SourcesDirectory)/src/MySqlConnector.Logging.Serilog/MySqlConnector.Logging.Serilog.csproj
+      $(Build.SourcesDirectory)/tests/Conformance.Tests/Conformance.Tests.csproj
+      $(Build.SourcesDirectory)/tests/MySqlConnector.Tests/MySqlConnector.Tests.csproj
+      $(Build.SourcesDirectory)/tests/SideBySide/SideBySide.csproj
+    path: $(NUGET_PACKAGES)
+  displayName: NuGet build cache
+
 - task: CopyFiles@2
   displayName: 'Copy config.json'
   inputs:
     sourceFolder: '.ci/config'
     contents: 'config.json'
     targetFolder: 'tests/SideBySide'
-- task: DotNetCoreInstaller@0
+- task: UseDotNet@2
   displayName: 'Install .NET Core'
   inputs:
     version: $(DotNetCoreSdkVersion)
@@ -57,3 +73,15 @@ steps:
   inputs:
     artifactName: 'SideBySide-netcoreapp2.1-$(Agent.OS)'
     targetPath: 'tests/SideBySide/bin/Release/netcoreapp2.1/publish'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Publish SideBySide (3.0)'
+  inputs:
+    command: 'publish'
+    arguments: '-c Release -f netcoreapp3.0 tests/SideBySide/SideBySide.csproj'
+    publishWebProjects: false
+    zipAfterPublish: false
+- task: PublishPipelineArtifact@0
+  inputs:
+    artifactName: 'SideBySide-netcoreapp3.0-$(Agent.OS)'
+    targetPath: 'tests/SideBySide/bin/Release/netcoreapp3.0/publish'
