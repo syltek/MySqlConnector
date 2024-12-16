@@ -13,8 +13,11 @@
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/mysql-net/MySqlConnector.git</RepositoryUrl>
     <DebugType>embedded</DebugType>
-    <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>2.0.0</PackageValidationBaselineVersion>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <!--
+		<PackageValidationBaselineVersion>2.0.0</PackageValidationBaselineVersion>
+	-->
+	<VersionPrefix>2.4.0</VersionPrefix>
     <EnableStrictModeForCompatibleFrameworksInPackageValidation>true</EnableStrictModeForCompatibleFrameworksInPackageValidation>
     <EnableStrictModeForCompatibleTfms>true</EnableStrictModeForCompatibleTfms>
     <AnalysisLevel>latest-all</AnalysisLevel>

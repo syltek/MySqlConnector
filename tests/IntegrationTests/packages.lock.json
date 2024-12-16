@@ -286,18 +286,18 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
+      "mysqlconnector.authentication.ed25519": {
+        "type": "Project",
+        "dependencies": {
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",
           "System.Diagnostics.DiagnosticSource": "[8.0.1, )",
           "System.Threading.Tasks.Extensions": "[4.5.4, )"
-        }
-      },
-      "mysqlconnector.authentication.ed25519": {
-        "type": "Project",
-        "dependencies": {
-          "MySqlConnector": "[1.0.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
@@ -641,18 +641,18 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
+      "mysqlconnector.authentication.ed25519": {
+        "type": "Project",
+        "dependencies": {
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",
           "System.Diagnostics.DiagnosticSource": "[8.0.1, )",
           "System.Threading.Tasks.Extensions": "[4.5.4, )"
-        }
-      },
-      "mysqlconnector.authentication.ed25519": {
-        "type": "Project",
-        "dependencies": {
-          "MySqlConnector": "[1.0.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
@@ -944,17 +944,17 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
+      "mysqlconnector.authentication.ed25519": {
+        "type": "Project",
+        "dependencies": {
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",
           "System.Diagnostics.DiagnosticSource": "[8.0.1, )"
-        }
-      },
-      "mysqlconnector.authentication.ed25519": {
-        "type": "Project",
-        "dependencies": {
-          "MySqlConnector": "[1.0.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
@@ -1209,16 +1209,16 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
-        }
-      },
       "mysqlconnector.authentication.ed25519": {
         "type": "Project",
         "dependencies": {
-          "MySqlConnector": "[1.0.0, )"
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
@@ -1463,16 +1463,16 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
-        }
-      },
       "mysqlconnector.authentication.ed25519": {
         "type": "Project",
         "dependencies": {
-          "MySqlConnector": "[1.0.0, )"
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

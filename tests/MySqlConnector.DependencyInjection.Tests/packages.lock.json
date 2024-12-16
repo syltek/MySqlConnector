@@ -136,17 +136,17 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
-        }
-      },
       "mysqlconnector.dependencyinjection": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[8.0.2, )",
-          "MySqlConnector": "[1.0.0, )"
+          "Syltek.MySqlConnector": "[2.4.0, )"
+        }
+      },
+      "Syltek.MySqlConnector": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

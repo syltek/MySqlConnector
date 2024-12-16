@@ -6,7 +6,7 @@
     <Copyright>Copyright 2016–2024 Bradley Grainger</Copyright>
     <Authors>Bradley Grainger</Authors>
     <AssemblyName>MySqlConnector</AssemblyName>
-    <PackageId>MySqlConnector</PackageId>
+    <PackageId>Syltek.MySqlConnector</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>mysql;mysqlconnector;async;ado.net;database;netcore</PackageTags>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,6 +14,8 @@
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net7.0'))">true</IsAotCompatible>
+    <IncludeSymbols>True</IncludeSymbols>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>

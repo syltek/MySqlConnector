@@ -81,7 +81,7 @@
         "resolved": "6.0.0",
         "contentHash": "/iUeP3tq1S0XdNNoMz5C9twLSrM/TH+qElHkXWaPvuNOt+99G75NrV0OS2EqHx5wMN7popYjpc8oTjC1y16DLg=="
       },
-      "mysqlconnector": {
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",
@@ -266,7 +266,7 @@
         "resolved": "4.5.0",
         "contentHash": "U77HfRXlZlOeIXd//Yoj6Jnk8AXlbeisf1oq1os+hxOGVnuG+lGSfGqTwTZBoORFF6j/0q7HXIl8cqwQ9aUGqQ=="
       },
-      "mysqlconnector": {
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",

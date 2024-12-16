@@ -170,7 +170,7 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )",
@@ -346,7 +346,7 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "mysqlconnector": {
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"

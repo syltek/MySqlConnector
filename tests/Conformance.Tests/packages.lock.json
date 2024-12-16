@@ -166,7 +166,7 @@
           "xunit.extensibility.execution": "2.4.0"
         }
       },
-      "mysqlconnector": {
+      "Syltek.MySqlConnector": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.2, )"
