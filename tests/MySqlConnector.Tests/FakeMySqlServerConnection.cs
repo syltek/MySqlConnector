@@ -69,6 +69,11 @@ internal sealed class FakeMySqlServerConnection
 							await SendAsync(stream, 1, WriteOk);
 							break;
 
+						case CommandKind.InitDatabase:
+						case CommandKind.ChangeUser:
+							await SendAsync(stream, 1, WriteOk);
+							break;
+
 						case CommandKind.Query:
 							var query = Encoding.UTF8.GetString(bytes, 1, bytes.Length - 1);
 							Match match;

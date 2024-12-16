@@ -405,6 +405,12 @@ public sealed class MySqlConnectionStringBuilder : DbConnectionStringBuilder
 		set => MySqlConnectionStringOption.MaximumPoolSize.SetValue(this, value);
 	}
 
+	public bool ServerLevelPooling
+	{
+		get => MySqlConnectionStringOption.ServerLevelPooling.GetValue(this);
+		set => MySqlConnectionStringOption.ServerLevelPooling.SetValue(this, value);
+	}
+
 	/// <summary>
 	/// The number of seconds between checks for DNS changes, or 0 to disable periodic checks.
 	/// </summary>
@@ -926,6 +932,7 @@ internal abstract partial class MySqlConnectionStringOption
 	public static readonly MySqlConnectionStringValueOption<uint> ConnectionIdleTimeout;
 	public static readonly MySqlConnectionStringValueOption<uint> MinimumPoolSize;
 	public static readonly MySqlConnectionStringValueOption<uint> MaximumPoolSize;
+	public static readonly MySqlConnectionStringValueOption<bool> ServerLevelPooling;
 	public static readonly MySqlConnectionStringValueOption<uint> DnsCheckInterval;
 
 	// Other Options
@@ -1135,6 +1142,10 @@ internal abstract partial class MySqlConnectionStringOption
 		AddOption(options, MaximumPoolSize = new(
 			keys: ["Maximum Pool Size", "Max Pool Size", "MaximumPoolSize", "maxpoolsize"],
 			defaultValue: 100u));
+
+		AddOption(options, ServerLevelPooling = new(
+			keys: ["serverlevelpooling", "Server Level Pooling" ],
+			defaultValue: false));
 
 		AddOption(options, DnsCheckInterval = new(
 			keys: ["DNS Check Interval", "DnsCheckInterval"],

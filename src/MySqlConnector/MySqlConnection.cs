@@ -539,7 +539,15 @@ public sealed class MySqlConnection : DbConnection, ICloneable
 
 			var pool = m_dataSource?.Pool ??
 				ConnectionPool.GetPool(m_connectionString, LoggingConfiguration, createIfNotFound: true);
-			m_connectionSettings ??= pool?.ConnectionSettings ?? new ConnectionSettings(new MySqlConnectionStringBuilder(m_connectionString));
+
+			var builder = new MySqlConnectionStringBuilder(m_connectionString);
+			if (builder.ServerLevelPooling)
+			{
+				builder.ConnectionReset = true;
+				m_connectionSettings = new ConnectionSettings(builder);
+			}
+
+			m_connectionSettings ??= pool?.ConnectionSettings ?? new ConnectionSettings(builder);
 
 			// check if there is an open session (in the current transaction) that can be adopted
 			if (m_connectionSettings.AutoEnlist && System.Transactions.Transaction.Current is not null)
@@ -567,6 +575,12 @@ public sealed class MySqlConnection : DbConnection, ICloneable
 				m_session = await CreateSessionAsync(pool, openStartingTimestamp, activity, ioBehavior, cancellationToken).ConfigureAwait(false);
 				m_hasBeenOpened = true;
 				SetState(ConnectionState.Open);
+
+				var settings = GetConnectionSettings();
+				if (settings.Pooling && settings.ServerLevelPooling && !string.IsNullOrEmpty(settings.Database))
+				{
+					await ChangeDatabaseAsync(settings.Database, CancellationToken.None).ConfigureAwait(false);
+				}
 			}
 			catch (OperationCanceledException ex)
 			{
@@ -710,6 +724,8 @@ public sealed class MySqlConnection : DbConnection, ICloneable
 	/// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
 	/// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
 	public static Task ClearAllPoolsAsync(CancellationToken cancellationToken = default) => ConnectionPool.ClearPoolsAsync(IOBehavior.Asynchronous, cancellationToken);
+
+	public static int GetPooledConnectionCount() => ConnectionPool.GetPooledConnectionCount();
 
 	private static async Task ClearPoolAsync(MySqlConnection connection, IOBehavior ioBehavior, CancellationToken cancellationToken)
 	{
@@ -1187,6 +1203,7 @@ public sealed class MySqlConnection : DbConnection, ICloneable
 			{
 				await m_session.ReturnToPoolAsync(ioBehavior, this).ConfigureAwait(false);
 				m_session = null;
+				m_connectionSettings = null;
 			}
 			if (changeState)
 				SetState(ConnectionState.Closed);
@@ -1261,6 +1278,7 @@ public sealed class MySqlConnection : DbConnection, ICloneable
 					m_session.OwningConnection = null;
 				}
 				m_session = null;
+				m_connectionSettings = null;
 			}
 
 			if (changeState)

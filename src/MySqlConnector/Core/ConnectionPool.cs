@@ -470,7 +470,7 @@ internal sealed class ConnectionPool : IConnectionPoolMetadata, IDisposable
 		}
 
 		// check for pool using normalized form of connection string
-		var normalizedConnectionString = connectionStringBuilder.ConnectionString;
+		var normalizedConnectionString = GetNormalizedConnectionString(connectionStringBuilder);
 		if (normalizedConnectionString != connectionString && s_pools.TryGetValue(normalizedConnectionString, out pool))
 		{
 			// try to set the pool for the connection string to the canonical pool; if someone else
@@ -507,6 +507,21 @@ internal sealed class ConnectionPool : IConnectionPoolMetadata, IDisposable
 		return pool;
 	}
 
+	private static string GetNormalizedConnectionString(MySqlConnectionStringBuilder builder)
+	{
+		var db = builder.Database;
+		if (builder.Pooling && builder.ServerLevelPooling)
+			builder.Database = null;
+
+		// remove the database for server level pooling, we don't want to pool per database
+		var normalizedConnectionString = builder.ConnectionString;
+
+		// restore the builder to its original state
+		builder.Database = db;
+
+		return normalizedConnectionString;
+	}
+
 	public static async Task ClearPoolsAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
 	{
 		foreach (var pool in GetCachedPools())
@@ -523,6 +538,11 @@ internal sealed class ConnectionPool : IConnectionPoolMetadata, IDisposable
 			}
 			return pools;
 		}
+	}
+
+	public static int GetPooledConnectionCount()
+	{
+		return GetAllPools().Sum(p => p.m_sessions.Count);
 	}
 
 	private ConnectionPool(MySqlConnectorLoggingConfiguration loggingConfiguration, ConnectionSettings cs)
